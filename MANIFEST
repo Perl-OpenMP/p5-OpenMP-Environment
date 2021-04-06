@@ -1,0 +1,6 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/OpenMP-Environment.t
+lib/OpenMP/Environment.pm

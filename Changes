@@ -1,0 +1,6 @@
+Revision history for Perl extension OpenMP::Environment.
+
+0.01  Thu Apr  1 11:05:09 2021
+	- original version; created by h2xs 1.23 with options
+		-X OpenMP::Environment
+
