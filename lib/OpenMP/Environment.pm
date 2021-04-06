@@ -433,6 +433,206 @@ those beginning with GOMP_ are GNU extensions.>
 
 L<https://gcc.gnu.org/onlinedocs/libgomp/Environment-Variables.html>
 
+=head1 METHODS
+
+=over 3
+
+=item C<new>
+
+Constructor
+
+=item C<vars>
+
+Returns a list of all supported C<OMP_*> and C<GOMP_*> environmental variables.
+
+=item C<vars_unset>
+
+Returns a list of all unset supported variables.
+
+=item C<vars_set>
+
+Returns a list of hash references of all set variables, of the form,
+
+    (
+       VARIABLE1 => value1,
+       VARIABLE2 => value2,
+       ...
+    )
+
+=item C<print_summary_unset>
+
+Prints summary of all unset variable.
+
+=item C<print_summary_set>
+
+Prints summary of all set variables, including values.
+
+=item C<print_summary>
+
+Prints summary of all set and unset variables; including values where applicable.
+
+=item C<omp_cancellation>
+
+Setter/getter for C<OMP_CANCELLATION>.
+
+=item C<unset_omp_cancellation>
+
+Unsets C<OMP_CANCELLATION>, deletes it from localized C<%ENV>.
+
+=item C<omp_display_env>
+
+Setter/getter for C<OMP_DISPLAY_ENV>.
+
+=item C<unset_omp_display_env>
+
+Unsets C<OMP_DISPLAY_ENV>, deletes it from localized C<%ENV>.
+
+=item C<omp_default_device>
+
+Setter/getter for C<OMP_DEFAULT_DEVICE>.
+
+=item C<unset_omp_default_device>
+
+Unsets C<OMP_DEFAULT_DEVICE>, deletes it from localized C<%ENV>.
+
+=item C<omp_dynamic>
+
+Setter/getter for C<OMP_DYNAMIC>.
+
+=item C<unset_omp_dynamic>
+
+Unsets C<OMP_DYNAMIC>, deletes it from localized C<%ENV>.
+
+=item C<omp_max_active_levels>
+
+Setter/getter for C<OMP_MAX_ACTIVE_LEVELS>.
+
+=item C<unset_omp_max_active_levels>
+
+Unsets C<OMP_MAX_ACTIVE_LEVELS>, deletes it from localized C<%ENV>.
+
+=item C<omp_max_task_priority>
+
+Setter/getter for C<OMP_MAX_TASK_PRIORITY>.
+
+=item C<unset_omp_max_task_priority>
+
+Unsets C<OMP_MAX_TASK_PRIORITY>, deletes it from localized C<%ENV>.
+
+=item C<omp_nested>
+
+Setter/getter for C<OMP_NESTED>.
+
+=item C<unset_omp_nested>
+
+Unsets C<OMP_NESTED>, deletes it from localized C<%ENV>.
+
+=item C<omp_num_threads>
+
+Setter/getter for C<OMP_NUM_THREADS>.
+
+=item C<unset_omp_num_threads>
+
+Unsets C<OMP_NUM_THREADS>, deletes it from localized C<%ENV>.
+
+=item C<omp_proc_bind>
+
+Setter/getter for C<OMP_PROC_BIND>.
+
+=item C<unset_omp_proc_bind>
+
+Unsets C<OMP_PROC_BIND>, deletes it from localized C<%ENV>.
+
+=item C<omp_places>
+
+Setter/getter for C<OMP_PLACES>.
+
+=item C<unset_omp_places>
+
+Unsets C<OMP_PLACES>, deletes it from localized C<%ENV>.
+
+=item C<omp_stacksize>
+
+Setter/getter for C<OMP_STACKSIZE>.
+
+=item C<unset_omp_stacksize>
+
+Unsets C<OMP_STACKSIZE>, deletes it from localized C<%ENV>.
+
+=item C<omp_schedule>
+
+Setter/getter for C<OMP_SCHEDULE>.
+
+=item C<unset_omp_schedule>
+
+Unsets C<OMP_SCHEDULE>, deletes it from localized C<%ENV>.
+
+=item C<omp_target_offload>
+
+Setter/getter for C<OMP_TARGET_OFFLOADS>.
+
+=item C<unset_omp_target_offload>
+
+Unsets C<OMP_TARGET_OFFLOADS>, deletes it from localized C<%ENV>.
+
+=item C<omp_thread_limit>
+
+Setter/getter for C<OMP_THREAD_LIMIT>.
+
+=item C<unset_omp_thread_limit>
+
+Unsets C<OMP_THREAD_LIMIT>, deletes it from localized C<%ENV>.
+
+=item C<omp_wait_policy>
+
+Setter/getter for C<OMP_WAIT_POLICY>.
+
+=item C<unset_omp_wait_policy>
+
+Unsets C<OMP_WAIT_POLICY>, deletes it from localized C<%ENV>.
+
+=item C<gomp_cpu_affinity>
+
+Setter/getter for C<GOMP_CPU_AFFINITY>.
+
+=item C<unset_gomp_cpu_affinity>
+
+Unsets C<GOMP_CPU_AFFINITY>, deletes it from localized C<%ENV>.
+
+=item C<gomp_debug>
+
+Setter/getter for C<GOMP_DEBUG>.
+
+=item C<unset_gomp_debug>
+
+Unsets C<GOMP_DEBUG>, deletes it from localized C<%ENV>.
+
+=item C<gomp_stacksize>
+
+Setter/getter for C<GOMP_STACKSIZE>.
+
+=item C<unset_gomp_stacksize>
+
+Unsets C<GOMP_STACKSIZE>, deletes it from localized C<%ENV>.
+
+=item C<gomp_spincount>
+
+Setter/getter for C<GOMP_SPINCOUNT>.
+
+=item C<unset_gomp_spincount>
+
+Unsets C<GOMP_SPINCOUNT>, deletes it from localized C<%ENV>.
+
+=item C<gomp_rtems_thread_pools>
+
+Setter/getter for C<GOMP_RTEMS_THREAD_POOLS>.
+
+=item C<unset_gomp_rtems_thread_pools>
+
+Unsets C<GOMP_RTEMS_THREAD_POOLS>, deletes it from localized C<%ENV>.
+
+=back
+
 =head1 SUPPORTED C<OpenMP> ENVIRONMENTAL VARIABLES
 
 Essentially direct copy from the URL in L<DESCRIPTION>.
@@ -481,7 +681,7 @@ When undefined, OMP_PROC_BIND defaults to TRUE when OMP_PLACES or GOMP_CPU_AFFIN
 
 The thread placement can be either specified using an abstract name or by an explicit list of the places. The abstract names threads, cores and sockets can be optionally followed by a positive number in parentheses, which denotes the how many places shall be created. With threads each place corresponds to a single hardware thread; cores to a single core with the corresponding number of hardware threads; and with sockets the place corresponds to a single socket. The resulting placement can be shown by setting the OMP_DISPLAY_ENV environment variable.
 
-Alternatively, the placement can be specified explicitly as comma-separated list of places. A place is specified by set of nonnegative numbers in curly braces, denoting the denoting the hardware threads. The hardware threads belonging to a place can either be specified as comma-separated list of nonnegative thread numbers or using an interval. Multiple places can also be either specified by a comma-separated list of places or by an interval. To specify an interval, a colon followed by the count is placed after after the hardware thread number or the place. Optionally, the length can be followed by a colon and the stride number – otherwise a unit stride is assumed. For instance, the following specifies the same places list: "{0,1,2}, {3,4,6}, {7,8,9}, {10,11,12}"; "{0:3}, {3:3}, {7:3}, {10:3}"; and "{0:2}:4:3".
+Alternatively, the placement can be specified explicitly as comma separated list of places. A place is specified by set of nonnegative numbers in curly braces, denoting the denoting the hardware threads. The hardware threads belonging to a place can either be specified as comma separated list of nonnegative thread numbers or using an interval. Multiple places can also be either specified by a comma separated list of places or by an interval. To specify an interval, a colon followed by the count is placed after after the hardware thread number or the place. Optionally, the length can be followed by a colon and the stride number - otherwise a unit stride is assumed. For instance, the following specifies the same places list: "{0,1,2}, {3,4,6}, {7,8,9}, {10,11,12}"; "{0:3}, {3:3}, {7:3}, {10:3}"; and "{0:2}:4:3".
 
 If OMP_PLACES and GOMP_CPU_AFFINITY are unset and OMP_PROC_BIND is either unset or false, threads may be moved between CPUs following no placement policy.
 
@@ -554,11 +754,11 @@ L<https://gcc.gnu.org/onlinedocs/libgomp/index.html>
 
 =head1 AUTHOR
 
-A. U. Thor, E<lt>wwlwpd@E<gt>
+oodler577
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2021 by A. U. Thor
+Copyright (C) 2021 by oodler577
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.30.0 or,

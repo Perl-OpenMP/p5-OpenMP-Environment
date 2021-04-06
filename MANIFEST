@@ -2,5 +2,6 @@ Changes
 Makefile.PL
 MANIFEST
 README
-t/OpenMP-Environment.t
+examples/launcher.pl
+t/01-validation.t
 lib/OpenMP/Environment.pm
