@@ -23,7 +23,7 @@ sub new {
     my $validate_rules = {
         fields  => \@_OMP_VARS,
         filters => [
-            [qw/OMP_CANCELLATION OMP_DYNAMIC OMP_NESTED OMP_DISPLAY_ENV OMP_TARGET_OFFLOAD OMP_WAIT_POLICY/] => filter('uc'), # force to upper case for convenience
+            [qw/OMP_CANCELLATION OMP_DYNAMIC OMP_NESTED OMP_DISPLAY_ENV OMP_TARGET_OFFLOAD OMP_WAIT_POLICY/] => filter('uc'),    # force to upper case for convenience
         ],
         checks => [
             [qw/OMP_CANCELLATION OMP_DYNAMIC OMP_NESTED/]                => is_in( [qw/TRUE FALSE/],                 q{Expected values are: 'TRUE' or 'FALSE'} ),
@@ -33,14 +33,16 @@ sub new {
             GOMP_DEBUG                                                   => is_in( [qw/0 1/],                        q{Expected values are: 0 or 1} ),
             [qw/OMP_MAX_TASK_PRIORITY OMP_DEFAULT_DEVICE/]               => sub { return _is_ge_if_set( 0, @_ ) },
             [qw/OMP_NUM_THREADS OMP_MAX_ACTIVE_LEVELS OMP_THREAD_LIMIT/] => sub { return _is_ge_if_set( 1, @_ ) },
-            OMP_PROC_BIND                                                => _no_validate(),
-            OMP_PLACES                                                   => _no_validate(),
-            OMP_STACKSIZE                                                => _no_validate(),
-            OMP_SCHEDULE                                                 => _no_validate(),
-            GOMP_CPU_AFFINITY                                            => _no_validate(),
-            GOMP_STACKSIZE                                               => _no_validate(),
-            GOMP_SPINCOUNT                                               => _no_validate(),
-            GOMP_RTEMS_THREAD_POOLS                                      => _no_validate(),
+
+            #-- the following are not current validated due to the complexity of the rules associated with their values
+            OMP_PROC_BIND           => _no_validate(),
+            OMP_PLACES              => _no_validate(),
+            OMP_STACKSIZE           => _no_validate(),
+            OMP_SCHEDULE            => _no_validate(),
+            GOMP_CPU_AFFINITY       => _no_validate(),
+            GOMP_STACKSIZE          => _no_validate(),
+            GOMP_SPINCOUNT          => _no_validate(),
+            GOMP_RTEMS_THREAD_POOLS => _no_validate(),
         ],
     };
 
@@ -86,7 +88,12 @@ sub vars_set {
     return @set;
 }
 
-sub print_summary_unset {
+sub print_omp_summary_unset {
+    my $self = shift;
+    return print $self->_omp_summary_unset;
+}
+
+sub _omp_summary_unset {
     my $self  = shift;
     my @lines = ();
     push @lines, qq{Summary of OpenMP Environmental UNSET variables supported in this module:};
@@ -94,12 +101,18 @@ sub print_summary_unset {
     foreach my $ev ( $self->vars_unset ) {
         push @lines, sprintf( qq{%s}, $ev );
     }
-    print join( qq{\n}, @lines );
-    print qq{\n};
-    print qq{- none\n} if ( @lines == 1 );
+    my $ret = join( qq{\n}, @lines );
+    $ret .= print qq{\n};
+    $ret .= print qq{- none\n} if ( @lines == 1 );
+    return $ret;
 }
 
-sub print_summary_set {
+sub print_omp_summary_set {
+    my $self = shift;
+    return print $self->_omp_summary_set;
+}
+
+sub _omp_summary_set {
     my $self  = shift;
     my @lines = ();
     push @lines, qq{Summary of OpenMP Environmental SET variables supported in this module:};
@@ -109,21 +122,28 @@ sub print_summary_set {
         my $val = ( values %$ev_ref )[0];
         push @lines, sprintf( qq{%-25s %s}, $ev, $val );
     }
-    print join( qq{\n}, @lines );
-    print qq{\n};
-    print qq{- none\n} if ( @lines == 1 );
+    my $ret = join( qq{\n}, @lines );
+    $ret .= print qq{\n};
+    $ret .= print qq{- none\n} if ( @lines == 1 );
+    return $ret;
 }
 
-sub print_summary {
+sub print_omp_summary {
     my $self = shift;
-    print qq{Summary of OpenMP Environmental ALL variables supported in this module:\n};
-    printf( qq{%-25s %s\n}, q{Variable}, q{Value} );
-    printf( qq{%-25s %s\n}, q{~~~~~~~~}, q{~~~~~} );
+    return print $self->_omp_summary;
+}
+
+sub _omp_summary {
+    my $self = shift;
+    my $ret  = qq{Summary of OpenMP Environmental ALL variables supported in this module:\n};
+    $ret .= sprintf( qq{%-25s %s\n}, q{Variable}, q{Value} );
+    $ret .= sprintf( qq{%-25s %s\n}, q{~~~~~~~~}, q{~~~~~} );
   ENV:
     foreach my $ev ( $self->vars ) {
-        my $val = ( $ENV{$ev} ) ? $ENV{$ev} : q{<XXunsetXX>};
-        printf( qq{%-25s %s\n}, $ev, $val );
+        my $val = ( defined $ENV{$ev} ) ? $ENV{$ev} : q{<XXunsetXX>};
+        $ret .= sprintf( qq{%-25s %s\n}, $ev, $val );
     }
+    return $ret;
 }
 
 # OpenMP Environmental Variable setters/getters
@@ -370,13 +390,26 @@ sub unset_gomp_rtems_thread_pools {
 
 # auxilary validation routines for with Validate::Tiny
 
+# used to assert valid environment, useful if variables are already set externally
+sub assert_omp_environment {
+    my $self  = shift;
+    my @lines = ();
+  ENV:
+    foreach my $ev_ref ( $self->vars_set ) {
+        my $ev  = ( keys %$ev_ref )[0];
+        my $val = ( values %$ev_ref )[0];
+        $self->_get_set_assert( $ev, $ENV{$ev} ) if exists $ENV{$ev};
+    }
+    return 1;
+}
+
 sub _get_set_assert {
     my ( $self, $ev, $value ) = @_;
     if ( defined $value ) {
         my $filtered_value = $self->_assert_valid( $ev, $value );
         $ENV{$ev} = $filtered_value;
     }
-    return (exists $ENV{$ev}) ? $ENV{$ev} : undef;
+    return ( exists $ENV{$ev} ) ? $ENV{$ev} : undef;
 }
 
 sub _assert_valid {
@@ -409,18 +442,62 @@ __END__
 
 =head1 NAME
 
-OpenMP::Environment - Perl extension managing OpenMP environmental variables within a script.
+OpenMP::Environment - Perl extension managing OpenMP variables in C<%ENV> within a script.
 
 =head1 SYNOPSIS
 
+Example 1; ensure an OpenMP environment is set up properly already (externally)
+
   use OpenMP::Environment;
+  my $env = OpenMP::Environment->new;
+  $env->assert_omp_environment;
 
-  my $ompenv = OpenMP::Environment->new;
+Example 2; Managing a range of thread scales (useful for benchmarking, testing, etc)
 
-  # assert valid environment; will warn if no OMP_* variables are set; will will `die` if any
-  # supported variables are set incorrectly; by default, will warn if C<OMP_NUM_THREADS> is not set.
+  use OpenMP::Environment;
+  my $omp = OpenMP::Environment->new;
 
-  $ompenv->validate_environment;
+  foreach my $i (1 2 4 8 16 32 64 128 256) {
+    $env->set_omp_num_threads($i); # Note: validated
+    my $exit_code = system(qw{/path/to/my_prog_r --opt1 x --opt2 y});
+     
+    if ($exit_code == 0) {
+      # ... do some post processing
+    }
+    else {
+      # ... handle failed execution
+    }
+  }
+
+Example 3; Extended benchmarking, affecting C<OMP_SCHEDULE> in addition
+to C<OMP_NUM_THREADS>.
+
+  use OpenMP::Environment;
+  my $omp = OpenMP::Environment->new;
+
+  foreach my $i (1 2 4 8 16 32 64 128 256) {
+    $env->set_omp_num_threads($i); # Note: validated
+    foreach my $sched (qw/static dynamic auto/) {
+      # compute chunk size
+      my $chunk = get_baby_ruth($i);
+      
+      # set schedule using prescribed format
+      $env->set_omp_schedule(qq{$sched;$chunk}); # Note: Not validated
+      
+      my $exit_code = system(qw{/path/to/my_prog_r --opt1 x --opt2 y});
+       
+      if ($exit_code == 0) {
+        # ... do some post processing
+      }
+      else {
+        # ... handle failed execution
+      }
+    }
+  }
+
+There are setters, getters, and unsetters for all published OpenMP
+(and GOMP) environmental variables, in additional to some utility
+methods.
 
 =head1 DESCRIPTION
 
@@ -431,7 +508,33 @@ C<The environment variables which beginning with OMP_ are defined
 by section 4 of the OpenMP specification in version 4.5, while
 those beginning with GOMP_ are GNU extensions.>
 
+=head1 ABOUT THIS DOCUMENT
+
+Most provided methods are meant to manipulate a particular OpenMP
+environmental variable. Each has a setter, getter, and unsetter (i.e.,
+deletes the variable from C<%ENV> directly.
+
+Each method is documented, and it is noted if the setter will validate
+the provided value. Validation occurs whenever the set of values is a
+simple numerical value or is a limited set of specific strings. It is
+clearly noted below when a setter does not validate. This is extended
+to C<assert_omp_environment>, which will validate the variables it is
+able if they are already set in C<%ENV>.
+
 L<https://gcc.gnu.org/onlinedocs/libgomp/Environment-Variables.html>
+
+=head1 EXAMPLES
+
+There is a growing set of example scripts in the distribution's,
+C<examples/> directory.
+
+The number and breadth of testing is also growing, so for more examples
+on using it and this module's flexibility; please see those.
+
+Lastly, the Section L<SUPPORTED C<OpenMP> ENVIRONMENTAL VARIABLES> provides
+the full description of each environmental variable available in the OpenMP
+and GOMP documentation. It also describes the range of values that are deemed
+C<valid> for each variable.
 
 =head1 METHODS
 
@@ -440,6 +543,16 @@ L<https://gcc.gnu.org/onlinedocs/libgomp/Environment-Variables.html>
 =item C<new>
 
 Constructor
+
+=item C<assert_omp_environment>
+
+Validates OpenMP related environmental variables that might happen to be set
+in %ENV directly. Useful as a guard in launcher scripts to ensure the variables
+that are validated in this module are valid.
+
+As is the case for all variables, an Environment completely devoid of any related
+variables being set is considered C<valid>. In other words, only variables that
+are already set in the Environment are validated.
 
 =item C<vars>
 
@@ -459,21 +572,29 @@ Returns a list of hash references of all set variables, of the form,
        ...
     )
 
-=item C<print_summary_unset>
+=item C<print_omp_summary_unset>
 
 Prints summary of all unset variable.
 
-=item C<print_summary_set>
+Uses internal method, C<_omp_summary_unset> to get string to print.
+
+=item C<print_omp_summary_set>
 
 Prints summary of all set variables, including values.
 
-=item C<print_summary>
+Uses internal method, C<_omp_summary_set> to get string to print.
+
+=item C<print_omp_summary>
 
 Prints summary of all set and unset variables; including values where applicable.
+
+Uses internal method, C<_omp_summary> to get string to print.
 
 =item C<omp_cancellation>
 
 Setter/getter for C<OMP_CANCELLATION>.
+
+Validated.
 
 =item C<unset_omp_cancellation>
 
@@ -483,6 +604,8 @@ Unsets C<OMP_CANCELLATION>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<OMP_DISPLAY_ENV>.
 
+Validated.
+
 =item C<unset_omp_display_env>
 
 Unsets C<OMP_DISPLAY_ENV>, deletes it from localized C<%ENV>.
@@ -490,6 +613,8 @@ Unsets C<OMP_DISPLAY_ENV>, deletes it from localized C<%ENV>.
 =item C<omp_default_device>
 
 Setter/getter for C<OMP_DEFAULT_DEVICE>.
+
+Validated.
 
 =item C<unset_omp_default_device>
 
@@ -499,6 +624,8 @@ Unsets C<OMP_DEFAULT_DEVICE>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<OMP_DYNAMIC>.
 
+Validated.
+
 =item C<unset_omp_dynamic>
 
 Unsets C<OMP_DYNAMIC>, deletes it from localized C<%ENV>.
@@ -506,6 +633,8 @@ Unsets C<OMP_DYNAMIC>, deletes it from localized C<%ENV>.
 =item C<omp_max_active_levels>
 
 Setter/getter for C<OMP_MAX_ACTIVE_LEVELS>.
+
+Validated.
 
 =item C<unset_omp_max_active_levels>
 
@@ -515,13 +644,19 @@ Unsets C<OMP_MAX_ACTIVE_LEVELS>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<OMP_MAX_TASK_PRIORITY>.
 
+Validated.
+
 =item C<unset_omp_max_task_priority>
 
 Unsets C<OMP_MAX_TASK_PRIORITY>, deletes it from localized C<%ENV>.
 
+Validated.
+
 =item C<omp_nested>
 
 Setter/getter for C<OMP_NESTED>.
+
+Validated.
 
 =item C<unset_omp_nested>
 
@@ -531,6 +666,8 @@ Unsets C<OMP_NESTED>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<OMP_NUM_THREADS>.
 
+Validated.
+
 =item C<unset_omp_num_threads>
 
 Unsets C<OMP_NUM_THREADS>, deletes it from localized C<%ENV>.
@@ -538,6 +675,8 @@ Unsets C<OMP_NUM_THREADS>, deletes it from localized C<%ENV>.
 =item C<omp_proc_bind>
 
 Setter/getter for C<OMP_PROC_BIND>.
+
+Not validated.
 
 =item C<unset_omp_proc_bind>
 
@@ -547,6 +686,8 @@ Unsets C<OMP_PROC_BIND>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<OMP_PLACES>.
 
+Not validated.
+
 =item C<unset_omp_places>
 
 Unsets C<OMP_PLACES>, deletes it from localized C<%ENV>.
@@ -554,6 +695,8 @@ Unsets C<OMP_PLACES>, deletes it from localized C<%ENV>.
 =item C<omp_stacksize>
 
 Setter/getter for C<OMP_STACKSIZE>.
+
+Not validated.
 
 =item C<unset_omp_stacksize>
 
@@ -563,6 +706,8 @@ Unsets C<OMP_STACKSIZE>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<OMP_SCHEDULE>.
 
+Not validated.
+
 =item C<unset_omp_schedule>
 
 Unsets C<OMP_SCHEDULE>, deletes it from localized C<%ENV>.
@@ -570,6 +715,8 @@ Unsets C<OMP_SCHEDULE>, deletes it from localized C<%ENV>.
 =item C<omp_target_offload>
 
 Setter/getter for C<OMP_TARGET_OFFLOADS>.
+
+Validated.
 
 =item C<unset_omp_target_offload>
 
@@ -579,6 +726,8 @@ Unsets C<OMP_TARGET_OFFLOADS>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<OMP_THREAD_LIMIT>.
 
+Validated.
+
 =item C<unset_omp_thread_limit>
 
 Unsets C<OMP_THREAD_LIMIT>, deletes it from localized C<%ENV>.
@@ -586,6 +735,8 @@ Unsets C<OMP_THREAD_LIMIT>, deletes it from localized C<%ENV>.
 =item C<omp_wait_policy>
 
 Setter/getter for C<OMP_WAIT_POLICY>.
+
+Validated.
 
 =item C<unset_omp_wait_policy>
 
@@ -595,6 +746,8 @@ Unsets C<OMP_WAIT_POLICY>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<GOMP_CPU_AFFINITY>.
 
+Not validated.
+
 =item C<unset_gomp_cpu_affinity>
 
 Unsets C<GOMP_CPU_AFFINITY>, deletes it from localized C<%ENV>.
@@ -602,6 +755,8 @@ Unsets C<GOMP_CPU_AFFINITY>, deletes it from localized C<%ENV>.
 =item C<gomp_debug>
 
 Setter/getter for C<GOMP_DEBUG>.
+
+Validated.
 
 =item C<unset_gomp_debug>
 
@@ -611,6 +766,8 @@ Unsets C<GOMP_DEBUG>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<GOMP_STACKSIZE>.
 
+Not validated.
+
 =item C<unset_gomp_stacksize>
 
 Unsets C<GOMP_STACKSIZE>, deletes it from localized C<%ENV>.
@@ -619,6 +776,8 @@ Unsets C<GOMP_STACKSIZE>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<GOMP_SPINCOUNT>.
 
+Not validated.
+
 =item C<unset_gomp_spincount>
 
 Unsets C<GOMP_SPINCOUNT>, deletes it from localized C<%ENV>.
@@ -626,6 +785,8 @@ Unsets C<GOMP_SPINCOUNT>, deletes it from localized C<%ENV>.
 =item C<gomp_rtems_thread_pools>
 
 Setter/getter for C<GOMP_RTEMS_THREAD_POOLS>.
+
+Not validated.
 
 =item C<unset_gomp_rtems_thread_pools>
 
@@ -643,39 +804,57 @@ Essentially direct copy from the URL in L<DESCRIPTION>.
 
 If set to TRUE, the cancellation is activated. If set to FALSE or if unset, cancellation is disabled and the cancel construct is ignored.
 
+This variable is validated via setter.
+
 =item C<OMP_DISPLAY_ENV>
 
 If set to TRUE, the OpenMP version number and the values associated with the OpenMP environment variables are printed to stderr. If set to VERBOSE, it additionally shows the value of the environment variables which are GNU extensions. If undefined or set to FALSE, this information will not be shown.
+
+This variable is validated via setter.
 
 =item C<OMP_DEFAULT_DEVICE>
 
 Set to choose the device which is used in a target region, unless the value is overridden by omp_get_set_assert_default_device or by a device clause. The value shall be the nonnegative device number. If no device with the given device number exists, the code is executed on the host. If unset, device number 0 will be used.
 
+This variable is validated via setter.
+
 =item C<OMP_DYNAMIC>
 
 Enable or disable the dynamic adjustment of the number of threads within a team. The value of this environment variable shall be TRUE or FALSE. If undefined, dynamic adjustment is disabled by default.
+
+This variable is validated via setter.
 
 =item C<OMP_MAX_ACTIVE_LEVELS>
 
 Specifies the initial value for the maximum number of nested parallel regions. The value of this variable shall be a positive integer. If undefined, then if OMP_NESTED is defined and set to true, or if OMP_NUM_THREADS or OMP_PROC_BIND are defined and set to a list with more than one item, the maximum number of nested parallel regions will be initialized to the largest number supported, otherwise it will be set to one.
 
+This variable is validated via setter.
+
 =item C<OMP_MAX_TASK_PRIORITY>
 
 Specifies the initial value for the maximum priority value that can be set for a task. The value of this variable shall be a non-negative integer, and zero is allowed. If undefined, the default priority is 0.
+
+This variable is validated via setter.
 
 =item C<OMP_NESTED>
 
 Enable or disable nested parallel regions, i.e., whether team members are allowed to create new teams. The value of this environment variable shall be TRUE or FALSE. If set to TRUE, the number of maximum active nested regions supported will by default be set to the maximum supported, otherwise it will be set to one. If OMP_MAX_ACTIVE_LEVELS is defined, its setting will override this setting. If both are undefined, nested parallel regions are enabled if OMP_NUM_THREADS or OMP_PROC_BINDS are defined to a list with more than one item, otherwise they are disabled by default.
 
+This variable is validated via setter.
+
 =item C<OMP_NUM_THREADS>
 
 Specifies the default number of threads to use in parallel regions. The value of this variable shall be a comma-separated list of positive integers; the value specifies the number of threads to use for the corresponding nested level. Specifying more than one item in the list will automatically enable nesting by default. If undefined one thread per CPU is used.
+
+This variable is validated via setter.
 
 =item C<OMP_PROC_BIND>
 
 Specifies whether threads may be moved between processors. If set to TRUE, OpenMP theads should not be moved; if set to FALSE they may be moved. Alternatively, a comma separated list with the values MASTER, CLOSE and SPREAD can be used to specify the thread affinity policy for the corresponding nesting level. With MASTER the worker threads are in the same place partition as the master thread. With CLOSE those are kept close to the master thread in contiguous place partitions. And with SPREAD a sparse distribution across the place partitions is used. Specifying more than one item in the list will automatically enable nesting by default.
 
 When undefined, OMP_PROC_BIND defaults to TRUE when OMP_PLACES or GOMP_CPU_AFFINITY is set and FALSE otherwise.
+
+This module provides access to, but does NOT validate this variable.
 
 =item C<OMP_PLACES>
 
@@ -685,13 +864,19 @@ Alternatively, the placement can be specified explicitly as comma separated list
 
 If OMP_PLACES and GOMP_CPU_AFFINITY are unset and OMP_PROC_BIND is either unset or false, threads may be moved between CPUs following no placement policy.
 
+This module provides access to, but does NOT validate this variable.
+
 =item C<OMP_STACKSIZE>
 
 Set the default thread stack size in kilobytes, unless the number is suffixed by B, K, M or G, in which case the size is, respectively, in bytes, kilobytes, megabytes or gigabytes. This is different from pthread_attr_get_set_assertstacksize which gets the number of bytes as an argument. If the stack size cannot be set due to system constraints, an error is reported and the initial stack size is left unchanged. If undefined, the stack size is system dependent.
 
+This module provides access to, but does NOT validate this variable.
+
 =item C<OMP_SCHEDULE>
 
 Allows to specify schedule type and chunk size. The value of the variable shall have the form: type[,chunk] where type is one of static, dynamic, guided or auto The optional chunk size shall be a positive integer. If undefined, dynamic scheduling and a chunk size of 1 is used.
+
+This module provides access to, but does NOT validate this variable.
 
 =item C<OMP_TARGET_OFFLOAD>
 
@@ -701,13 +886,19 @@ If set to MANDATORY, the program will terminate with an error if the offload dev
 
 If undefined, then the program will behave as if DEFAULT was set.
 
+This variable is validated via setter.
+
 =item C<OMP_THREAD_LIMIT>
 
 Specifies the number of threads to use for the whole program. The value of this variable shall be a positive integer. If undefined, the number of threads is not limited.
 
+This variable is validated via setter.
+
 =item C<OMP_WAIT_POLICY>
 
 Specifies whether waiting threads should be active or passive. If the value is PASSIVE, waiting threads should not consume CPU power while waiting; while the value is ACTIVE specifies that they should. If undefined, threads wait actively for a short time before waiting passively.
+
+This variable is validated via setter.
 
 =item C<GOMP_CPU_AFFINITY>
 
@@ -717,19 +908,27 @@ There is no libgomp library routine to determine whether a CPU affinity specific
 
 If both GOMP_CPU_AFFINITY and OMP_PROC_BIND are set, OMP_PROC_BIND has a higher precedence. If neither has been set and OMP_PROC_BIND is unset, or when OMP_PROC_BIND is set to FALSE, the host system will handle the assignment of threads to CPUs.
 
+This module provides access to, but does NOT validate this variable.
+
 =item C<GOMP_DEBUG>
 
 Enable debugging output. The variable should be set to 0 (disabled, also the default if not set), or 1 (enabled).
 
 If enabled, some debugging output will be printed during execution. This is currently not specified in more detail, and subject to change.
 
+This variable is validated via setter.
+
 =item C<GOMP_STACKSIZE>
 
 Determines how long a threads waits actively with consuming CPU power before waiting passively without consuming CPU power. The value may be either INFINITE, INFINITY to always wait actively or an integer which gives the number of spins of the busy-wait loop. The integer may optionally be followed by the following suffixes acting as multiplication factors: k (kilo, thousand), M (mega, million), G (giga, billion), or T (tera, trillion). If undefined, 0 is used when OMP_WAIT_POLICY is PASSIVE, 300,000 is used when OMP_WAIT_POLICY is undefined and 30 billion is used when OMP_WAIT_POLICY is ACTIVE. If there are more OpenMP threads than available CPUs, 1000 and 100 spins are used for OMP_WAIT_POLICY being ACTIVE or undefined, respectively; unless the GOMP_SPINCOUNT is lower or OMP_WAIT_POLICY is PASSIVE.
 
+This module provides access to, but does NOT validate this variable.
+
 =item C<GOMP_SPINCOUNT>
 
 Set the default thread stack size in kilobytes. This is different from pthread_attr_get_set_assertstacksize which gets the number of bytes as an argument. If the stack size cannot be set due to system constraints, an error is reported and the initial stack size is left unchanged. If undefined, the stack size is system dependent.
+
+This module provides access to, but does NOT validate this variable.
 
 =item C<GOMP_RTEMS_THREAD_POOLS>
 
@@ -742,6 +941,8 @@ This environment variable is only used on the RTEMS real-time operating system. 
 3. @<scheduler-name> is the scheduler instance name according to the RTEMS application configuration.
 
 In case no thread pool configuration is specified for a scheduler instance, then each OpenMP master thread of this scheduler instance will use its own dynamically allocated thread pool. To limit the worker thread count of the thread pools, each OpenMP master thread must call set_num_threads.
+
+This module provides access to, but does NOT validate this variable.
 
 =back
 
