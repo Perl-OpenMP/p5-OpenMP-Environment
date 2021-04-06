@@ -1,7 +1,0 @@
-Changes
-Makefile.PL
-MANIFEST
-README
-examples/launcher.pl
-t/01-validation.t
-lib/OpenMP/Environment.pm
