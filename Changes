@@ -4,3 +4,7 @@ Revision history for Perl extension OpenMP::Environment.
 	- original version; created by h2xs 1.23 with options
 		-X OpenMP::Environment
         - added dist.ini for Dist::Zilla (maximum overkill!)
+
+1.0.0 Tue Apr 6 12:00:00 2021
+        - bumped version to 1.0.0
+        - added tests, preparing for intial release
