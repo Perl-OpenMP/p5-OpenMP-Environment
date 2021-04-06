@@ -457,7 +457,7 @@ Example 1; ensure an OpenMP environment is set up properly already (externally)
 Example 2; Managing a range of thread scales (useful for benchmarking, testing, etc)
 
   use OpenMP::Environment;
-  my $omp = OpenMP::Environment->new;
+  my $env = OpenMP::Environment->new;
 
   foreach my $i (1 2 4 8 16 32 64 128 256) {
     $env->set_omp_num_threads($i); # Note: validated
@@ -475,7 +475,7 @@ Example 3; Extended benchmarking, affecting C<OMP_SCHEDULE> in addition
 to C<OMP_NUM_THREADS>.
 
   use OpenMP::Environment;
-  my $omp = OpenMP::Environment->new;
+  my $env = OpenMP::Environment->new;
 
   foreach my $i (1 2 4 8 16 32 64 128 256) {
     $env->set_omp_num_threads($i); # Note: validated
