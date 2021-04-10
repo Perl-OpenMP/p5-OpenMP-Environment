@@ -12,18 +12,17 @@ my $env = OpenMP::Environment->new;
 
 for my $i ( qw/1 2 4 8 16 32 64 128/ ) { 
   $env->omp_num_threads($i);
-  $env->print_omp_summary_set;
-
   #<< add `system` call to OpenMP compiled executable >>
   # e.g.,
-  # my $exit_code = system(qw{/path/to/my_prog_r --opt1 x --opt2 y});
+  my $exit_code = system($ARGV[0]);
   #
-  # if ($exit_code == 0) {
-  #   # ... do some post processing
-  # }
-  # else {
-  #   # ... handle failed execution
-  # }
+  if ($exit_code == 0) {
+    print qq{OK\n}
+  }
+  else {
+    print qq{OOPS\n};
+    exit $exit_code;
+  }
 }
 
 exit;
