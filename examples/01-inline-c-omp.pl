@@ -36,6 +36,8 @@ for my $num_threads (qw/1 2 4 8 16 32 64 128 256/) {
     test($num_threads);
 }
 
+exit;
+
 __DATA__
 
 __C__

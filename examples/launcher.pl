@@ -32,22 +32,23 @@ when running on large compute nodes. It's also useful as a basis
 for running OpenMP-based benchmarks or test suites.
 =cut
 
-# initialize 
+# initialize
 my $oenv = OpenMP::Environment->new;
 
-for my $i ( qw/1 2 4 8 16 32 64 128/ ) { 
-  $oenv->omp_num_threads($i);
-  #<< add `system` call to OpenMP compiled executable >>
-  # e.g.,
-  my $exit_code = system($ARGV[0]);
-  #
-  if ($exit_code == 0) {
-    print qq{OK - now do stuff after a successful execution\n}
-  }
-  else {
-    print qq{Oof - something went wrong.\n};
-    exit $exit_code;
-  }
+for my $i (qw/1 2 4 8 16 32 64 128/) {
+    $oenv->omp_num_threads($i);
+
+    #<< add `system` call to OpenMP compiled executable >>
+    # e.g.,
+    my $exit_code = system( $ARGV[0] );
+    #
+    if ( $exit_code == 0 ) {
+        print qq{OK - now do stuff after a successful execution\n};
+    }
+    else {
+        print qq{Oof - something went wrong.\n};
+        exit $exit_code;
+    }
 }
 
 exit;
