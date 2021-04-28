@@ -2,6 +2,7 @@
 
 use strict;
 use warnings;
+use Alien::OpenMP;
 
 =pod
 Note: OpenMP::Environment has no effect on Perl interfaces
@@ -26,9 +27,8 @@ in as a parameter to the compiled functions.
 # build and load subroutines
 use Inline (
     C           => 'DATA',
-    name        => q{Test},
-    ccflagsex   => q{-fopenmp},
-    lddlflags   => join( q{ }, $Config::Config{lddlflags}, q{-fopenmp} ),
+    ccflagsex   => Alien::OpenMP::cflags(),
+    lddlflags   => join( q{ }, $Config::Config{lddlflags}, Alien::OpenMP::lddlflags() ),
     BUILD_NOISY => 1,
 );
 
