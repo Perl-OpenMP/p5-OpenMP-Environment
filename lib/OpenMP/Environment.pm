@@ -1,5 +1,4 @@
-package OpenMP::Environment;
-
+package OpenMP::Environment; 
 use strict;
 use warnings;
 
@@ -449,14 +448,19 @@ C<%ENV> within a script.
 
 =head1 SYNOPSIS
 
-  use OpenMP::Environment;
+  use OpenMP::Environment ();
   my $env = OpenMP::Environment->new;
   $env->assert_omp_environment;
 
 =head1 DESCRIPTION
 
 Provides accessors for affecting the OpenMP/GOMP environmental
-variables described at at the time of this writing, as:
+variables that affect some aspects of OpenMP programs and shared
+libraries at libary load and run times.
+
+This module is not directly useful with L<Inline::C> and L<Alien::OpenMP>,
+but can be. See L<Example 5> for more information on how to
+achieve this utility.
 
 There are setters, getters, and unsetters for all published OpenMP
 (and GOMP) environmental variables, in additional to some utility
@@ -654,9 +658,14 @@ that it sets
       }
     }
 
+L<Example 5> in the following section demostrates how get around this
+restriction somewhat. The caveat is that the respective environmental
+variable must also come with a corresponding I<setter> function in the
+OpenMP run time.
+
 =head2 Example 5
 
-Writing C functions that are aware of the OpenMP runtime methods
+Writing C functions that are aware of the OpenMP run time methods
 that are able to be affected by the set of C<omp_set_*> functions:
 
 The following is an example of emulating the familiar behavior of
@@ -745,10 +754,7 @@ to OpenMP environmental variables to work with:
 
 =item C<omp_set_num_threads>
 
-By far the most commonly used environmental variable; this run time
-I<setter> corresponds to C<OMP_NUM_THREADS>. The example below
-illustrates a basic case of re-reading this variable, but the
-general principle can be applied to any of the following variables.
+Corresponds to C<omp_set_num_threads>.
 
 =item C<omp_set_default_device>
 
@@ -772,11 +778,14 @@ Corresponds to C<OMP_SCHEDULE>.
 
 =back
 
-B<Note:> The other environmental variables presented in this module
-do not have run time I<setters>. Dealing with tese dynamically
-presents some additional hurdles and considerations; this will be
-addressed outside of this example.
 =head1 METHODS
+
+B<Note:> Due to the libary load time of functions compiled and
+exported (e.g., using L<Inline::C>), only environmental variables
+that are provided with a standard I<set> function for affecting at
+run time can be made to emulate the effective behavior that those
+familiar with executing OpenMP binaries my find familiar. See
+examples 4 and 5 above for more information about what this means.
 
 =over 3
 
@@ -859,6 +868,11 @@ Setter/getter for C<OMP_DEFAULT_DEVICE>.
 
 Validated.
 
+B<Note:> The other environmental variables presented in this module
+do not have run time I<setters>. Dealing with tese dynamically
+presents some additional hurdles and considerations; this will be
+addressed outside of this example.
+
 =item C<unset_omp_default_device>
 
 Unsets C<OMP_DEFAULT_DEVICE>, deletes it from localized C<%ENV>.
@@ -869,6 +883,11 @@ Setter/getter for C<OMP_DYNAMIC>.
 
 Validated.
 
+B<Note:> The other environmental variables presented in this module
+do not have run time I<setters>. Dealing with tese dynamically
+presents some additional hurdles and considerations; this will be
+addressed outside of this example.
+
 =item C<unset_omp_dynamic>
 
 Unsets C<OMP_DYNAMIC>, deletes it from localized C<%ENV>.
@@ -878,6 +897,11 @@ Unsets C<OMP_DYNAMIC>, deletes it from localized C<%ENV>.
 Setter/getter for C<OMP_MAX_ACTIVE_LEVELS>.
 
 Validated.
+
+B<Note:> The other environmental variables presented in this module
+do not have run time I<setters>. Dealing with tese dynamically
+presents some additional hurdles and considerations; this will be
+addressed outside of this example.
 
 =item C<unset_omp_max_active_levels>
 
@@ -901,6 +925,11 @@ Setter/getter for C<OMP_NESTED>.
 
 Validated.
 
+B<Note:> The other environmental variables presented in this module
+do not have run time I<setters>. Dealing with tese dynamically
+presents some additional hurdles and considerations; this will be
+addressed outside of this example.
+
 =item C<unset_omp_nested>
 
 Unsets C<OMP_NESTED>, deletes it from localized C<%ENV>.
@@ -910,6 +939,11 @@ Unsets C<OMP_NESTED>, deletes it from localized C<%ENV>.
 Setter/getter for C<OMP_NUM_THREADS>.
 
 Validated.
+
+B<Note:> This environmental variable has a I<Standards> defined run time
+function associated with it. Therefore, the approach of I<rereading> the
+environment demostrated in L<Example 5> may be used to use this module
+for affecting this setting at run time.
 
 =item C<unset_omp_num_threads>
 
@@ -950,6 +984,11 @@ Unsets C<OMP_STACKSIZE>, deletes it from localized C<%ENV>.
 Setter/getter for C<OMP_SCHEDULE>.
 
 Not validated.
+
+B<Note:> The other environmental variables presented in this module
+do not have run time I<setters>. Dealing with tese dynamically
+presents some additional hurdles and considerations; this will be
+addressed outside of this example.
 
 =item C<unset_omp_schedule>
 
@@ -1251,7 +1290,7 @@ language-specific library functions, e.g., getenv in C or
 GET_ENVIRONMENT_VARIABLE in Fortran, may be used to query the
 setting of the GOMP_CPU_AFFINITY environment variable. A defined
 CPU affinity on startup cannot be changed or disabled during the
-runtime of the application.
+run time of the application.
 
 If both GOMP_CPU_AFFINITY and OMP_PROC_BIND are set, OMP_PROC_BIND
 has a higher precedence. If neither has been set and OMP_PROC_BIND
@@ -1325,7 +1364,7 @@ In case no thread pool configuration is specified for a scheduler
 instance, then each OpenMP master thread of this scheduler instance
 will use its own dynamically allocated thread pool. To limit the
 worker thread count of the thread pools, each OpenMP master thread
-must call set_num_threads.
+must call C<set_num_threads>.
 
 This module provides access to, but does NOT validate this variable.
 
