@@ -1,0 +1,4 @@
+*.sw*
+.build
+_Inline
+benchmarks/NPB3.4.1/NPB3.4-OMP
