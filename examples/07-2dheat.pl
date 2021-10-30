@@ -10,8 +10,7 @@ use Util::H2O qw/h2o/;
 # build and load subroutines
 use Inline (
     C           => 'DATA',
-    ccflagsex   => Alien::OpenMP::cflags(),
-    lddlflags   => join( q{ }, $Config::Config{lddlflags}, Alien::OpenMP::lddlflags() ),
+    with        => qw/Alien::OpenMP/,
     BUILD_NOISY => 1,
 );
 
