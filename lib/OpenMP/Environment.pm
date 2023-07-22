@@ -4,7 +4,7 @@ use warnings;
 
 use Validate::Tiny qw/filter is_in/;
 
-our $VERSION = q{1.1.3};
+our $VERSION = q{1.2.0};
 
 our @_OMP_VARS = (
     qw/OMP_CANCELLATION OMP_DISPLAY_ENV OMP_DEFAULT_DEVICE
@@ -565,7 +565,8 @@ Extended benchmarking, affecting C<OMP_SCHEDULE> in addition toC<OMP_NUM_THREADS
         my $chunk = get_baby_ruth($i);
         
         # set schedule using prescribed format
-        $env->set_omp_schedule(qq{$sched;$chunk}); # Note: Not validated
+        $env->set_omp_schedule(qq{$sched,$chunk});
+        # Note: format is OMP_SCHED_T[,CHUNK] where OMP_SCHED_T is: 'static', 'dynamic', 'guided', or 'auto'; CHUNK is an integer >0 
         
         my $exit_code = system(qw{/path/to/my_prog_r --opt1 x --opt2 y});
          
@@ -945,6 +946,10 @@ function associated with it. Therefore, the approach of I<rereading> the
 environment demostrated in L<Example 5> may be used to use this module
 for affecting this setting at run time.
 
+For more information on this environmental variable, please see:
+
+L<https://gcc.gnu.org/onlinedocs/libgomp/openmp-environment-variables/ompnumthreads.html>
+
 =item C<unset_omp_num_threads>
 
 Unsets C<OMP_NUM_THREADS>, deletes it from localized C<%ENV>.
@@ -984,6 +989,25 @@ Unsets C<OMP_STACKSIZE>, deletes it from localized C<%ENV>.
 Setter/getter for C<OMP_SCHEDULE>.
 
 Not validated.
+
+Note: The format for the environmental variable is C<omp_sched_t[,chunk]> where
+B<omp_sched_t> is: 'static', 'dynamic', 'guided', or 'auto'; B<chunk> is an integer >0
+
+For contrast to the value of C<OMP_SCHEDULE>, the runtime function used to set this in an
+OpenMP program, C<set_omp_schedule> that expects constant values not exposed via the environmental
+variable C<OMP_SCHEDULE>.
+
+E.g.,
+
+  #include<omp.h>
+  ...
+  set_omp_schedule(omp_sched_static, 10); // Note: this is the C runtime function call
+
+For more information on this particular environmental variable please see:
+
+L<https://gcc.gnu.org/onlinedocs/libgomp/openmp-environment-variables/ompschedule.html>
+
+Also, see the tests in L<OpenMP::Simple>.
 
 B<Note:> The other environmental variables presented in this module
 do not have run time I<setters>. Dealing with tese dynamically
@@ -1372,10 +1396,19 @@ This module provides access to, but does NOT validate this variable.
 
 =head1 SEE ALSO
 
+L<OpenMP::Simple> is a module that aims at making it easier to bootstrap
+Perl+OpenMP programs. It is designed to work together with this module.
+
 This module heavily favors the C<GOMP> implementation of the OpenMP
-specification within gcc.
+specification within gcc. In fact, it has not been tested with any
+other implementations.
 
 L<https://gcc.gnu.org/onlinedocs/libgomp/index.html>
+
+Please also see the C<rperl> project for a glimpse into the potential
+future of Perl+OpenMP, particularly in regards to thread-safe data structures.
+
+L<https://www.rperl.org>
 
 =head1 AUTHOR
 
@@ -1391,7 +1424,7 @@ time versus run time; and when the environment is initialized.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2021 by oodler577
+Copyright (C) 2021-2023 by oodler577
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.30.0
