@@ -849,6 +849,13 @@ Setter/getter for C<OMP_CANCELLATION>.
 
 Validated.
 
+B<Note:> it appears that the OpenMP Specification (any version) does not define a runtime
+method to set this. When used with L<OpenMP::Simple>, which makes it a little easier
+to deal with C<Inline::C>'d OpenMP routines, this must be set before the shared libraries
+are loaded from C<Inline::C>. The only real opportunity to do this is in the C<BEGIN>
+block. However, if dealing with a standalone binary executable; this environmental variable
+will do what you mean when updated between calls to the external executable.
+
 =item C<unset_omp_cancellation>
 
 Unsets C<OMP_CANCELLATION>, deletes it from localized C<%ENV>.
@@ -990,7 +997,7 @@ Setter/getter for C<OMP_SCHEDULE>.
 
 Not validated.
 
-Note: The format for the environmental variable is C<omp_sched_t[,chunk]> where
+B<Note:> The format for the environmental variable is C<omp_sched_t[,chunk]> where
 B<omp_sched_t> is: 'static', 'dynamic', 'guided', or 'auto'; B<chunk> is an integer >0
 
 For contrast to the value of C<OMP_SCHEDULE>, the runtime function used to set this in an
