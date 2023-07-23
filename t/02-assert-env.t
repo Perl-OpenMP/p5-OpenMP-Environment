@@ -21,7 +21,7 @@ sub set_valid {
     $ENV{OMP_CANCELLATION}      = q{TRUE};
     $ENV{OMP_DISPLAY_ENV}       = q{TRUE};
     $ENV{OMP_TARGET_OFFLOAD}    = q{MANDATORY};
-    $ENV{OMP_DYNAMIC}           = q{TRUE};
+    $ENV{OMP_DYNAMIC}           = q{true};
     $ENV{OMP_DEFAULT_DEVICE}    = 0;
     $ENV{OMP_MAX_ACTIVE_LEVELS} = 1;
     $ENV{OMP_MAX_TASK_PRIORITY} = 0;

@@ -24,10 +24,11 @@ sub new {
     my $validate_rules = {
         fields  => \@_OMP_VARS,
         filters => [
-            [qw/OMP_CANCELLATION OMP_DYNAMIC OMP_NESTED OMP_DISPLAY_ENV OMP_TARGET_OFFLOAD OMP_WAIT_POLICY/] => filter('uc'),    # force to upper case for convenience
+            [qw/OMP_CANCELLATION OMP_NESTED OMP_DISPLAY_ENV OMP_TARGET_OFFLOAD OMP_WAIT_POLICY/] => filter('uc'),    # force to upper case for convenience
         ],
         checks => [
-            [qw/OMP_CANCELLATION OMP_DYNAMIC OMP_NESTED/]                => is_in( [qw/TRUE FALSE/],                 q{Expected values are: 'TRUE' or 'FALSE'} ),
+            [qw/OMP_DYNAMIC/]                                            => is_in( [qw/TRUE true 1 FALSE false 0/],  q{Expected values are: 'true', 1, 'false', or 0} ),
+            [qw/OMP_CANCELLATION OMP_NESTED/]                            => is_in( [qw/TRUE FALSE/],                 q{Expected values are: 'TRUE' or 'FALSE'} ),
             OMP_DISPLAY_ENV                                              => is_in( [qw/TRUE VERBOSE FALSE/],         q{Expected values are: 'TRUE', 'VERBOSE', or 'FALSE'} ),
             OMP_TARGET_OFFLOAD                                           => is_in( [qw/MANDATORY DISABLED DEFAULT/], q{Expected values are: 'MANDATORY', 'DISABLED', or 'DEFAULT'} ),
             OMP_WAIT_POLICY                                              => is_in( [qw/ACTIVE PASSIVE/],             q{Expected values are: 'ACTIVE' or 'PASSIVE'} ),
@@ -188,7 +189,14 @@ sub unset_omp_default_device {
 sub omp_dynamic {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_DYNAMIC};
-    return $self->_get_set_assert( $ev, $value );
+    my $old = $ENV{OMP_DYNAMIC};
+    if (not $value or $value eq q{false} or $value eq q{FALSE}) {
+     $self->unset_omp_dynamic();
+     return $old;
+    }
+    else {
+      return $self->_get_set_assert( $ev, $value );
+    }
 }
 
 sub unset_omp_dynamic {
@@ -889,7 +897,18 @@ Unsets C<OMP_DEFAULT_DEVICE>, deletes it from localized C<%ENV>.
 
 Setter/getter for C<OMP_DYNAMIC>.
 
-Validated.
+Validated. If set to a I<falsy> value, the key C<$ENV{OMP_DYNAMIC}> is deleted
+entirely, because this seems to be how GCC's GOMP needs it to be presented.
+Simply setting it to C<0> or C<false> will not work. It has to be I<unset>.
+So setting it to a I<falsy> value is the same as calling C<unset_omp_dynamic>.
+
+=over 4
+
+=item B<'true'> | 1
+
+=item B<'false'> | 0 | I<unset>
+
+=back
 
 B<Note:> The other environmental variables presented in this module
 do not have run time I<setters>. Dealing with tese dynamically

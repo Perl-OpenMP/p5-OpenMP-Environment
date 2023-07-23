@@ -4,7 +4,7 @@ use warnings;
 use FindBin qw/$Bin/;
 use lib qq{$Bin/../lib};
 
-use Test::More tests => 321;
+use Test::More tests => 324;
 use Test::Exception;
 
 use_ok('OpenMP::Environment');
@@ -27,13 +27,16 @@ ok !exists( $ENV{OMP_CANCELLATION} ), q/$ENV{OMP_CANCELLATION} doesn't exist, as
 dies_ok( sub { $env->omp_cancellation(q{Invalid value xxx}) }, q{omp_cancellation dies on invalid input} );
 
 # OMP_DYNAMIC
-note q{## OMP_DYNAMIC's valid values are: 'TRUE', 'FALSE', and may be unset};
-is $env->omp_dynamic(q{TRUE}), q{TRUE}, q{OMP_DYNAMIC can be set to 'TRUE' };
-is $env->omp_dynamic(q{true}), q{TRUE}, q{OMP_DYNAMIC can be set to 'TRUE' via 'true' };
-is $env->unset_omp_dynamic(), q{TRUE}, q{unset_omp_dynamic returns last known value if OMP_DYNAMIC is set};
-is $env->omp_dynamic(q{FALSE}), q{FALSE}, q{OMP_DYNAMIC can be set to 'FALSE' };
-is $env->omp_dynamic(q{false}), q{FALSE}, q{OMP_DYNAMIC can be set to 'FALSE' via 'false' };
-is $env->unset_omp_dynamic(), q{FALSE}, q{unset_omp_dynamic returns last known value if OMP_DYNAMIC is set};
+note q{## OMP_DYNAMIC's valid values are: 'true', 1, 'false', 0, and may be unset};
+is $env->omp_dynamic(q{true}), q{true}, q{OMP_DYNAMIC can be set to 'true' via 'true' };
+is $env->unset_omp_dynamic(), q{true}, q{unset_omp_dynamic returns last known value if OMP_DYNAMIC is set};
+is $env->omp_dynamic(q{1}), q{1}, q{OMP_DYNAMIC can be set to '1' via '1' };
+is $env->unset_omp_dynamic(), q{1}, q{unset_omp_dynamic returns last known value if OMP_DYNAMIC is set};
+is $env->omp_dynamic(q{false}), undef, q{OMP_DYNAMIC can be set to 'false' via 'false' };
+is $env->unset_omp_dynamic(), undef, q{unset_omp_dynamic returns undef when OMP_DYNAMIC already doesn't exist};
+is $env->omp_dynamic(q{1}), q{1}, q{OMP_DYNAMIC can be set to '1' via '1' };
+is $env->omp_dynamic(q{0}), 1, q{OMP_DYNAMIC can be unset via '0', if set returns 1};
+is $env->unset_omp_dynamic(), undef, q{unset_omp_dynamic returns last known value if OMP_DYNAMIC is set, including undef if unset};
 is $env->omp_dynamic, undef, q{OMP_DYNAMIC has indeed been unset};
 ok !exists( $ENV{OMP_DYNAMIC} ), q/$ENV{OMP_DYNAMIC} doesn't exist, as expected/;
 dies_ok( sub { $env->omp_dynamic(q{Invalid value xxx}) }, q{omp_dynamic dies on invalid input} );
