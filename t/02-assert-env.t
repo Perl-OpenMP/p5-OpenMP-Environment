@@ -28,6 +28,7 @@ sub set_valid {
     $ENV{OMP_NESTED}            = q{TRUE};
     $ENV{OMP_NUM_THREADS}       = 16;
     $ENV{OMP_THREAD_LIMIT}      = 1;
+    $ENV{OMP_TEAMS_THREAD_LIMIT}      = 1;
     $ENV{OMP_WAIT_POLICY}       = q{PASSIVE};
     $ENV{GOMP_DEBUG}            = 0;
 }
@@ -101,8 +102,18 @@ dies_ok( sub { $env->assert_omp_environment }, q{Fails as expectedly when OMP_NU
 
 set_valid();
 
+$ENV{OMP_NUM_TEAMS} = q{figgy};
+dies_ok( sub { $env->assert_omp_environment }, q{Fails as expectedly when OMP_NUM_TEAMS is invalid} );
+
+set_valid();
+
 $ENV{OMP_THREAD_LIMIT} = q{aaa};
 dies_ok( sub { $env->assert_omp_environment }, q{Fails as expectedly when OMP_THREAD_LIMIT is invalid} );
+
+set_valid();
+
+$ENV{OMP_TEAMS_THREAD_LIMIT} = q{aaa};
+dies_ok( sub { $env->assert_omp_environment }, q{Fails as expectedly when OMP_TEAMS_THREAD_LIMIT is invalid} );
 
 set_valid();
 

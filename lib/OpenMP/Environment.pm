@@ -7,11 +7,12 @@ use Validate::Tiny qw/filter is_in/;
 our $VERSION = q{1.2.0};
 
 our @_OMP_VARS = (
-    qw/OMP_CANCELLATION OMP_DISPLAY_ENV OMP_DEFAULT_DEVICE
+    qw/OMP_CANCELLATION OMP_DISPLAY_ENV OMP_DEFAULT_DEVICE OMP_NUM_TEAMS
       OMP_DYNAMIC OMP_MAX_ACTIVE_LEVELS OMP_MAX_TASK_PRIORITY OMP_NESTED
       OMP_NUM_THREADS OMP_PROC_BIND OMP_PLACES OMP_STACKSIZE OMP_SCHEDULE
       OMP_TARGET_OFFLOAD OMP_THREAD_LIMIT OMP_WAIT_POLICY GOMP_CPU_AFFINITY
-      GOMP_DEBUG GOMP_STACKSIZE GOMP_SPINCOUNT GOMP_RTEMS_THREAD_POOLS/
+      GOMP_DEBUG GOMP_STACKSIZE GOMP_SPINCOUNT GOMP_RTEMS_THREAD_POOLS
+      OMP_TEAMS_THREAD_LIMIT/
 );
 
 # capture state of %ENV
@@ -27,14 +28,15 @@ sub new {
             [qw/OMP_CANCELLATION OMP_NESTED OMP_DISPLAY_ENV OMP_TARGET_OFFLOAD OMP_WAIT_POLICY/] => filter('uc'),    # force to upper case for convenience
         ],
         checks => [
-            [qw/OMP_DYNAMIC/]                                            => is_in( [qw/TRUE true 1 FALSE false 0/],  q{Expected values are: 'true', 1, 'false', or 0} ),
-            [qw/OMP_CANCELLATION OMP_NESTED/]                            => is_in( [qw/TRUE FALSE/],                 q{Expected values are: 'TRUE' or 'FALSE'} ),
+            [qw/OMP_DYNAMIC OMP_NESTED/]                                 => is_in( [qw/TRUE true 1 FALSE false 0/],  q{Expected values are: 'true', 1, 'false', or 0} ),
+            [qw/OMP_CANCELLATION/]                                       => is_in( [qw/TRUE FALSE/],                 q{Expected values are: 'TRUE' or 'FALSE'} ),
             OMP_DISPLAY_ENV                                              => is_in( [qw/TRUE VERBOSE FALSE/],         q{Expected values are: 'TRUE', 'VERBOSE', or 'FALSE'} ),
             OMP_TARGET_OFFLOAD                                           => is_in( [qw/MANDATORY DISABLED DEFAULT/], q{Expected values are: 'MANDATORY', 'DISABLED', or 'DEFAULT'} ),
             OMP_WAIT_POLICY                                              => is_in( [qw/ACTIVE PASSIVE/],             q{Expected values are: 'ACTIVE' or 'PASSIVE'} ),
             GOMP_DEBUG                                                   => is_in( [qw/0 1/],                        q{Expected values are: 0 or 1} ),
             [qw/OMP_MAX_TASK_PRIORITY OMP_DEFAULT_DEVICE/]               => sub { return _is_ge_if_set( 0, @_ ) },
             [qw/OMP_NUM_THREADS OMP_MAX_ACTIVE_LEVELS OMP_THREAD_LIMIT/] => sub { return _is_ge_if_set( 1, @_ ) },
+            [qw/OMP_NUM_TEAMS OMP_TEAMS_THREAD_LIMIT/]                   => sub { return _is_ge_if_set( 1, @_ ) },
 
             #-- the following are not current validated due to the complexity of the rules associated with their values
             OMP_PROC_BIND           => _no_validate(),
@@ -232,7 +234,14 @@ sub unset_omp_max_task_priority {
 sub omp_nested {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_NESTED};
-    return $self->_get_set_assert( $ev, $value );
+    my $old = $ENV{OMP_NESTED};
+    if (not $value or $value eq q{false} or $value eq q{FALSE}) {
+     $self->unset_omp_nested();
+     return $old;
+    }
+    else {
+      return $self->_get_set_assert( $ev, $value );
+    }
 }
 
 sub unset_omp_nested {
@@ -250,6 +259,18 @@ sub omp_num_threads {
 sub unset_omp_num_threads {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_NUM_THREADS};
+    return delete $ENV{$ev};
+}
+
+sub omp_num_teams {
+    my ( $self, $value ) = @_;
+    my $ev = q{OMP_NUM_TEAMS};
+    return $self->_get_set_assert( $ev, $value );
+}
+
+sub unset_omp_num_teams {
+    my ( $self, $value ) = @_;
+    my $ev = q{OMP_NUM_TEAMS};
     return delete $ENV{$ev};
 }
 
@@ -322,6 +343,18 @@ sub omp_thread_limit {
 sub unset_omp_thread_limit {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_THREAD_LIMIT};
+    return delete $ENV{$ev};
+}
+
+sub omp_teams_thread_limit {
+    my ( $self, $value ) = @_;
+    my $ev = q{OMP_TEAMS_THREAD_LIMIT};
+    return $self->_get_set_assert( $ev, $value );
+}
+
+sub unset_omp_teams_thread_limit {
+    my ( $self, $value ) = @_;
+    my $ev = q{OMP_TEAMS_THREAD_LIMIT};
     return delete $ENV{$ev};
 }
 
@@ -980,6 +1013,25 @@ L<https://gcc.gnu.org/onlinedocs/libgomp/openmp-environment-variables/ompnumthre
 
 Unsets C<OMP_NUM_THREADS>, deletes it from localized C<%ENV>.
 
+=item C<omp_num_teams>
+
+Setter/getter for C<OMP_NUM_TEAMS>.
+
+Validated.
+
+B<Note:> This environmental variable has a I<Standards> defined run time
+function associated with it. Therefore, the approach of I<rereading> the
+environment demostrated in L<Example 5> may be used to use this module
+for affecting this setting at run time.
+
+For more information on this environmental variable, please see:
+
+L<https://gcc.gnu.org/onlinedocs/libgomp/openmp-environment-variables/ompnumteams.html>
+
+=item C<unset_omp_num_teams>
+
+Unsets C<OMP_NUM_TEAMS>, deletes it from localized C<%ENV>.
+
 =item C<omp_proc_bind>
 
 Setter/getter for C<OMP_PROC_BIND>.
@@ -1063,6 +1115,16 @@ Validated.
 =item C<unset_omp_thread_limit>
 
 Unsets C<OMP_THREAD_LIMIT>, deletes it from localized C<%ENV>.
+
+=item C<omp_teams_thread_limit>
+
+Setter/getter for C<OMP_TEAMS_THREAD_LIMIT>.
+
+Validated.
+
+=item C<unset_omp_teams_thread_limit>
+
+Unsets C<OMP_TEAMS_THREAD_LIMIT>, deletes it from localized C<%ENV>.
 
 =item C<omp_wait_policy>
 
@@ -1304,6 +1366,14 @@ If undefined, then the program will behave as if DEFAULT was set.
 This variable is validated via setter.
 
 =item C<OMP_THREAD_LIMIT>
+
+Specifies the number of threads to use for the whole program. The
+value of this variable shall be a positive integer. If undefined,
+the number of threads is not limited.
+
+This variable is validated via setter.
+
+=item C<OMP_TEAMS_THREAD_LIMIT>
 
 Specifies the number of threads to use for the whole program. The
 value of this variable shall be a positive integer. If undefined,
