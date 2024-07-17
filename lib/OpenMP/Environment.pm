@@ -622,8 +622,8 @@ Coupled with L<OpenMP::Simple>, the targeted audience broadens more deeply
 to include OpenMP C coders who may not have considered Perl as a C<host>
 environment for their parallel programs. It also provides a path for experienced
 Perl programmers to consider using OpenMP in their programs that would
-benefit from the targeted, real parallelization of subroutines that might
-be already including via L<Inline::C>.
+benefit from the targeted, real parallelization of subroutines that they
+might be already including via L<Inline::C>.
 
 =head2 Benchmarks
 
