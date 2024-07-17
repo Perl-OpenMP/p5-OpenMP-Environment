@@ -4,7 +4,7 @@ use warnings;
 
 use Validate::Tiny qw/filter is_in/;
 
-our $VERSION = q{1.2.2};
+our $VERSION = q{1.2.3};
 
 our @_OMP_VARS = (
     qw/OMP_CANCELLATION OMP_DISPLAY_ENV OMP_DEFAULT_DEVICE OMP_NUM_TEAMS
@@ -493,40 +493,46 @@ This module is most effective when used along with L<OpenMP::Simple>:
 
   use strict;
   use warnings;
- 
+
   use OpenMP::Simple;
   use OpenMP::Environment;
- 
+
   use Inline (
       C    => 'DATA',
       with => qw/OpenMP::Simple/,
   );
- 
+
   my $env = OpenMP::Environment->new;
- 
-  for my $num_threads ( 1 .. 8 ) {
-      my $current_value = $env->omp_num_threads($num_threads);
-      $env->assert_omp_environment;   # validates OpenMP related variables in %ENV
-      printf "The number of threads (%0d) spawned in
-                 the OpenMP runtime via OMP_NUM_THREADS\n", $num_threads;
+
+  for my $want_num_threads ( 1 .. 8 ) {
+      $env->omp_num_threads($want_num_threads);
+
+      $env->assert_omp_environment; # (optional) validates %ENV
+
+      # call parallelized C function
+      my $got_num_threads = _check_num_threads();
+
+      printf "%0d threads spawned in ".
+              "the OpenMP runtime, expecting %0d\n", $got_num_threads, $want_num_threads;
   }
- 
+
   __DATA__
   __C__
 
   /* C function parallelized with OpenMP */
-  int _get_num_threads() {
-    PerlOMP_UPDATE_WITH_ENV__NUM_THREADS /* MACRO from OpenMP::Simple */
+  int _check_num_threads() {
     int ret = 0;
+
+    PerlOMP_UPDATE_WITH_ENV__NUM_THREADS /* <~ MACRO x OpenMP::Simple */
+
     #pragma omp parallel
     {
       #pragma omp single
       ret = omp_get_num_threads();
     }
+
     return ret;
   }
-
-  __END__
 
 But it can be used alone also to manage the environment for OpenMP
 paralellized executables that are called as external processes.
@@ -567,9 +573,9 @@ shared libraries at libary load and run times.  There are setters, getters,
 and unsetters for all published OpenMP (and GOMP) environmental variables,
 in additional to some utility methods.
 
-C<The environment variables which beginning with OMP_ are defined by section
+The environment variables which beginning with OMP_ are defined by section
 4 of the OpenMP specification in version 4.5, while those beginning with
-GOMP_ are GNU extensions.>
+GOMP_ are GNU extensions
 
 The author of this module is also the author of L<OpenMP::Simple>, and it
 is recommended that these two modules be used together for maximum ease of
@@ -604,6 +610,20 @@ OpenMP in the Perl world, is all very much appreciated.
 =head1 USES AND USE CASES
 
 =head2 Intended Audience
+
+C<OpenMP::Environment> used alone is for individuals wishing to write
+code for managing complex workflows involving standalone executables
+parallelized using OpenMP where managing the OpenMP run time parameters
+via the environment is important. It helps to be familiar with Perl,
+however this is already a highly technical endeavor and the introduction
+of Perl for this is a good decision. This module makes it a better one.
+
+Coupled with L<OpenMP::Simple>, the targeted audience broadens more deeply
+to include OpenMP C coders who may not have considered Perl as a C<host>
+environment for their parallel programs. It also provides a path for experienced
+Perl programmers to consider using OpenMP in their programs that would
+benefit from the targeted, real parallelization of subroutines that might
+be already including via L<Inline::C>.
 
 =head2 Benchmarks
 
@@ -731,15 +751,9 @@ or using OpenMP::Environment's C<omp_num_threads> method.
 This example uses OpenMP::Environment, but shows that it works with
 two caveats:
 
-=over 4
-
-=item It must be called in a C<BEGIN> block that contains the
-invocation of C<Inline::C>
-
-=item It as only this single opportunity to effect the variables
-that it sets
-
-=back
+First, it must be called in a C<BEGIN> block that contains the invocation
+of C<Inline::C>. Second, it as only this single opportunity to effect the
+variables that it sets
 
     use OpenMP::Environment ();
     use constant USE_DEFAULT => 0;
@@ -823,40 +837,46 @@ with OpenMP has come to expect.
 
   use strict;
   use warnings;
- 
+
   use OpenMP::Simple;
   use OpenMP::Environment;
- 
+
   use Inline (
       C    => 'DATA',
       with => qw/OpenMP::Simple/,
   );
- 
+
   my $env = OpenMP::Environment->new;
- 
-  for my $num_threads ( 1 .. 8 ) {
-      my $current_value = $env->omp_num_threads($num_threads);
-      $env->assert_omp_environment;   # validates OpenMP related variables in %ENV
-      printf "The number of threads (%0d) spawned in
-                 the OpenMP runtime via OMP_NUM_THREADS\n", $num_threads;
+
+  for my $want_num_threads ( 1 .. 8 ) {
+      $env->omp_num_threads($want_num_threads);
+
+      $env->assert_omp_environment; # (optional) validates %ENV
+
+      # call parallelized C function
+      my $got_num_threads = _check_num_threads();
+
+      printf "%0d threads spawned in ".
+              "the OpenMP runtime, expecting %0d\n", $got_num_threads, $want_num_threads;
   }
- 
+
   __DATA__
   __C__
 
   /* C function parallelized with OpenMP */
-  int _get_num_threads() {
-    PerlOMP_UPDATE_WITH_ENV__NUM_THREADS /* MACRO from OpenMP::Simple */
+  int _check_num_threads() {
     int ret = 0;
+
+    PerlOMP_UPDATE_WITH_ENV__NUM_THREADS /* <~ MACRO x OpenMP::Simple */
+
     #pragma omp parallel
     {
       #pragma omp single
       ret = omp_get_num_threads();
     }
+
     return ret;
   }
-
-  __END__
 
 =head2 Additional Discussion
 
@@ -1598,6 +1618,9 @@ This module heavily favors the C<GOMP> implementation of the OpenMP
 specification within gcc. In fact, it has not been tested with any
 other implementations.
 
+Youtube videos on using OpenMP and MO's talks at Perl Conferences about
+Perl+OpenMP exist, the reader is encouraged to learn and try!
+
 L<https://gcc.gnu.org/onlinedocs/libgomp/index.html>
 
 Please also see the C<rperl> project for a glimpse into the potential
@@ -1607,7 +1630,7 @@ L<https://www.rperl.org>
 
 =head1 AUTHOR
 
-oodler577
+Brett Estrade L<< <oodler@cpan.org> >>
 
 =head1 ACKNOWLEDGEMENTS
 
@@ -1619,9 +1642,4 @@ time versus run time; and when the environment is initialized.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2021-2023 by oodler577
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself, either Perl version 5.30.0
-or, at your option, any later version of Perl 5 you may have
-available.
+Same as Perl.
