@@ -4,7 +4,7 @@ use warnings;
 
 use Validate::Tiny qw/filter is_in/;
 
-our $VERSION = q{1.2.1};
+our $VERSION = q{1.2.2};
 
 our @_OMP_VARS = (
     qw/OMP_CANCELLATION OMP_DISPLAY_ENV OMP_DEFAULT_DEVICE OMP_NUM_TEAMS
@@ -484,60 +484,128 @@ __END__
 
 =head1 NAME
 
-OpenMP::Environment - Perl extension managing OpenMP variables in
-C<%ENV> within a script.
+OpenMP::Environment - Perl extension managing OpenMP variables in C<%ENV>
+within a script.
 
 =head1 SYNOPSIS
 
-  use OpenMP::Environment ();
+This module is most effective when used along with L<OpenMP::Simple>:
+
+  use strict;
+  use warnings;
+ 
+  use OpenMP::Simple;
+  use OpenMP::Environment;
+ 
+  use Inline (
+      C    => 'DATA',
+      with => qw/OpenMP::Simple/,
+  );
+ 
   my $env = OpenMP::Environment->new;
-  $env->assert_omp_environment;
+ 
+  for my $num_threads ( 1 .. 8 ) {
+      my $current_value = $env->omp_num_threads($num_threads);
+      $env->assert_omp_environment;   # validates OpenMP related variables in %ENV
+      printf "The number of threads (%0d) spawned in
+                 the OpenMP runtime via OMP_NUM_THREADS\n", $num_threads;
+  }
+ 
+  __DATA__
+  __C__
+
+  /* C function parallelized with OpenMP */
+  int _get_num_threads() {
+    PerlOMP_UPDATE_WITH_ENV__NUM_THREADS /* MACRO from OpenMP::Simple */
+    int ret = 0;
+    #pragma omp parallel
+    {
+      #pragma omp single
+      ret = omp_get_num_threads();
+    }
+    return ret;
+  }
+
+  __END__
+
+But it can be used alone also to manage the environment for OpenMP
+paralellized executables that are called as external processes.
+
+  use strict;
+  use warnings;
+ 
+  use OpenMP::Environment;
+  my $env = OpenMP::Environment->new;
+
+  foreach my $i (1 2 4 8 16 32 64 128 256) {
+    $env->set_omp_num_threads($i); # Note: validated
+    foreach my $sched (qw/static dynamic auto/) {
+      # compute chunk size
+      my $chunk = get_baby_ruth($i);
+      
+      # set schedule using prescribed format
+      $env->set_omp_schedule(qq{$sched,$chunk});
+      # Note: format is OMP_SCHED_T[,CHUNK] where OMP_SCHED_T is: 'static', 'dynamic', 'guided', or 'auto'; CHUNK is an integer >0 
+      
+      my $exit_code = system(qw{/path/to/my_prog_r --opt1 x --opt2 y});
+       
+      if ($exit_code == 0) {
+        # ... do some post processing
+      }
+      else {
+        # ... handle failed execution
+      }
+    }
+  }
+
 
 =head1 DESCRIPTION
 
-Provides accessors for affecting the OpenMP/GOMP environmental
-variables that affect some aspects of OpenMP programs and shared
-libraries at libary load and run times.
+C<OpenMP::Environment> provides accessors for affecting the OpenMP/GOMP
+environmental variables that affect some aspects of OpenMP programs and
+shared libraries at libary load and run times.  There are setters, getters,
+and unsetters for all published OpenMP (and GOMP) environmental variables,
+in additional to some utility methods.
 
-The author of this module is also the author of L<OpenMP::Simple>,
-and it is recommended that these two modules be used together for
-maximum ease of creating Perl programs that contains C code that has
-been parallelized using OpenMP. L<Example 4> illustrates how to use
-L<Alien::OpenMP> and directly query C<%ENV> in a way that mimicks
-the OpenMP runtime's expected behavior of querying the environment
-for some important information like C<OMP_NUM_THREADS> explicitly.
+C<The environment variables which beginning with OMP_ are defined by section
+4 of the OpenMP specification in version 4.5, while those beginning with
+GOMP_ are GNU extensions.>
 
-However, the recommended approach is illustrated in L<Example 5>,
-which uses both L<OpenMP::Simple> and L<OpenMP::Environment> to
-incorporate an C<%ENV> aware OpenMP into a Perl programs as seamlessly
-as possible.
+The author of this module is also the author of L<OpenMP::Simple>, and it
+is recommended that these two modules be used together for maximum ease of
+creating Perl programs that contains C code that has been parallelized using
+OpenMP. L<Example 4> illustrates for the curious how to use L<Alien::OpenMP>
+and directly query C<%ENV> in a way that mimicks the OpenMP runtime's
+expected behavior of querying the environment for some important information
+like C<OMP_NUM_THREADS> explicitly at the start of the execution.
 
-There are setters, getters, and unsetters for all published OpenMP
-(and GOMP) environmental variables, in additional to some utility
-methods.
-
-C<The environment variables which beginning with OMP_ are defined
-by section 4 of the OpenMP specification in version 4.5, while
-those beginning with GOMP_ are GNU extensions.>
+However, the recommended approach is illustrated in L<Example 5>, which
+uses both L<OpenMP::Simple> and L<OpenMP::Environment> to incorporate an
+C<%ENV> aware OpenMP into a Perl programs as seamlessly as possible.
 
 =head1 ABOUT THIS DOCUMENT
 
 Most provided methods are meant to manipulate a particular OpenMP
-environmental variable. Each has a setter, getter, and unsetter
-(i.e., deletes the variable from C<%ENV> directly.
+environmental variable. Each has a setter, getter, and unsetter (i.e.,
+deletes the variable from C<%ENV> directly.
 
-Each method is documented, and it is noted if the setter will
-validate the provided value. Validation occurs whenever the set of
-values is a simple numerical value or is a limited set of specific
-strings. It is clearly noted below when a setter does not validate.
-This is extended to C<assert_omp_environment>, which will validate
-the variables it is able if they are already set in C<%ENV>.
+Each method is documented, and it is noted if the setter will validate
+the provided value. Validation occurs whenever the set of values is a
+simple numerical value or is a limited set of specific strings. It is
+clearly noted below when a setter does not validate.  This is extended
+to C<assert_omp_environment>, which will validate the variables it is
+able if they are already set in C<%ENV>.
 
 L<https://gcc.gnu.org/onlinedocs/libgomp/Environment-Variables.html>
 
+Help with improving this document and helping to advocate for the use of
+OpenMP in the Perl world, is all very much appreciated.
+
 =head1 USES AND USE CASES
 
-=head2 BENCHMARKS
+=head2 Intended Audience
+
+=head2 Benchmarks
 
 This module is ideal to support benchmarks and test suites that
 are implemented using OpenMP. As a small example, there is an
@@ -550,20 +618,31 @@ it :). The link to the benchmark suite is
 L<https://www.nas.nasa.gov/publications/npb.html>, but it is one
 of many such OpenMP benchmarks and validation suites.
 
-=head2 SUPPORTING XS MODULES USING OPENMP
+=head2 Supporting XS Modules Using OpenMP
 
-The caveats for linking shared libraries that contain OpenMP are
-explained in C<Example 4> above. The C<OpenMP::Environment> module
-is not as effect as it is with stand alone executables that use
-OpenMP; but the can be made so with some minor modifications to
-the code that provide additional support for passing number of
-threads, etc and using the OpenMP API (e.g., C<omp_set_num_threads>)
-to affect the number of threads.
+Because C code that is including into a Perl program directly as a shared
+library (via XS or indirectly via L<Inline::C> based methods - which
+L<Alien::OpenMP> and L<OpenMP::Simple> both are); it can be surprising
+that OpenMP's runtime start up behavior queries the user's environment
+(C<%ENV>) only once for important variables.
+
+While surprising, this is consistent with how an OpenMP program behaves
+when run directly as a binary executable. Since we usually want to deal
+differently with shared libraries included in a Perl program (i.e., we
+wish to call the functions more than once), we need to explicitly re-read
+C<%ENV> and apply any updates to the variables we care about in the C<C>
+code using OpenMP's runtime functions. That's where L<OpenMP::Simple>
+helps - by providing C<C> MACROS that are written to do this for all
+OpenMP runtime functions that are available at start up.
+
+Please jump to L<Example 5> to see exactly what the recommend way to
+solve this looks like. The alternative is to do something messy and
+non-intuitive like in Example 4.
 
 =head1 EXAMPLES
 
-There is a growing set of example scripts in the distribution's,
-C<examples/> directory.
+There is a set of example scripts in the distribution's, C<examples/>
+directory.
 
 The number and breadth of testing is also growing, so for more
 examples on using it and this module's flexibility; please see
@@ -638,18 +717,16 @@ of this module.
 
 Use with an XS module that itself is C<OpenMP> aware:
 
-Note: OpenMP::Environment has no effect on Perl interfaces that
-utilize compiled code as shared objects, that also contain OpenMP
-constructs.
+Note: OpenMP::Environment has no effect on Perl interfaces that utilize
+compiled code as shared objects, that also contain OpenMP constructs.
 
-The reason for this is that OpenMP implemented by compilers, gcc
-(gomp), anyway, only read in the environment once. In our use of
-Inline::C, this corresponds to the actual loading of the .so that
-is linked to the XS-based Perl interface it presents.  As a result,
-a developer must use the OpenMP API that is exposed. In the example
-below, we're using the C<omp_set_num_threads> rather than setting
-C<OMP_NUM_THREADS> via %ENV or using OpenMP::Environment's
-C<omp_num_threads> method.
+The reason for this is that OpenMP implemented by compilers, gcc (gomp),
+anyway, only read in the environment once. In our use of Inline::C,
+this corresponds to the actual loading of the .so that is linked to the
+XS-based Perl interface it presents.  As a result, a developer must use
+the OpenMP API that is exposed. In the example below, we're using the
+C<omp_set_num_threads> rather than setting C<OMP_NUM_THREADS> via %ENV
+or using OpenMP::Environment's C<omp_num_threads> method.
 
 This example uses OpenMP::Environment, but shows that it works with
 two caveats:
@@ -746,28 +823,30 @@ with OpenMP has come to expect.
 
   use strict;
   use warnings;
-  
+ 
   use OpenMP::Simple;
   use OpenMP::Environment;
-  use Test::More tests => 8;
-  
+ 
   use Inline (
       C    => 'DATA',
       with => qw/OpenMP::Simple/,
   );
-  
+ 
   my $env = OpenMP::Environment->new;
-  
-  note qq{Testing macro provided by OpenMP::Simple, 'PerlOMP_UPDATE_WITH_ENV__NUM_THREADS'};
+ 
   for my $num_threads ( 1 .. 8 ) {
       my $current_value = $env->omp_num_threads($num_threads);
-      is _get_num_threads(), $num_threads, sprintf qq{The number of threads (%0d) spawned in the OpenMP runtime via OMP_NUM_THREADS, as expected}, $num_threads;
+      $env->assert_omp_environment;   # validates OpenMP related variables in %ENV
+      printf "The number of threads (%0d) spawned in
+                 the OpenMP runtime via OMP_NUM_THREADS\n", $num_threads;
   }
-  
+ 
   __DATA__
   __C__
+
+  /* C function parallelized with OpenMP */
   int _get_num_threads() {
-    PerlOMP_UPDATE_WITH_ENV__NUM_THREADS // <~ MACRO provided by OpenMP::Simple reads and updates based on OMP_NUM_THREADS in %ENV
+    PerlOMP_UPDATE_WITH_ENV__NUM_THREADS /* MACRO from OpenMP::Simple */
     int ret = 0;
     #pragma omp parallel
     {
@@ -776,7 +855,7 @@ with OpenMP has come to expect.
     }
     return ret;
   }
-  
+
   __END__
 
 =head2 Additional Discussion
