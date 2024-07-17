@@ -513,7 +513,8 @@ This module is most effective when used along with L<OpenMP::Simple>:
       my $got_num_threads = _check_num_threads();
 
       printf "%0d threads spawned in ".
-              "the OpenMP runtime, expecting %0d\n", $got_num_threads, $want_num_threads;
+              "the OpenMP runtime, expecting %0d\n",
+               $got_num_threads, $want_num_threads;
   }
 
   __DATA__
