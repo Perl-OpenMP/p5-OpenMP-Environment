@@ -41,6 +41,19 @@ is OpenMP::Environment::_is_ge_if_set( 1, 0 ),
 is OpenMP::Environment::_is_ge_if_set( 1, 1 ), undef,
   q{legacy integer helper accepts the minimum};
 
+# OpenMP 5.2 generally permits leading/trailing whitespace in environment
+# values.  The public boolean compatibility behavior should still unset false
+# values after that standard whitespace is ignored.
+my $whitespace_env = OpenMP::Environment->new;
+$whitespace_env->omp_dynamic(q{true});
+$whitespace_env->omp_dynamic(q{  false  });
+ok !exists $ENV{OMP_DYNAMIC},
+  q{OMP_DYNAMIC whitespace-wrapped FALSE retains historical unset behavior};
+$whitespace_env->omp_nested(q{true});
+$whitespace_env->omp_nested(q{  FALSE  });
+ok !exists $ENV{OMP_NESTED},
+  q{OMP_NESTED whitespace-wrapped FALSE retains historical unset behavior};
+
 # Assignment validation: exercise the strict legacy-validated failure path.
 local $@;
 eval { validate_assignment( q{OMP_CANCELLATION}, q{maybe} ) };

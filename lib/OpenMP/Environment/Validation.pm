@@ -51,9 +51,12 @@ my %VALIDATOR = (
 
 sub validation_rules {
     return {
-        fields     => [ OpenMP::Environment::Constants::environment_names() ],
-        normalized => [ sort keys %UPPERCASE_FILTER ],
-        validators => { %VALIDATOR },
+        fields                 => [ OpenMP::Environment::Constants::environment_names() ],
+        normalized             => [ sort keys %UPPERCASE_FILTER ],
+        assignment_validated   => [ sort keys %LEGACY_VALIDATED ],
+        whitespace_significant => [ q{OMP_AFFINITY_FORMAT} ],
+        validators             => { %VALIDATOR },
+        profile                => q{OpenMP 5.2 + GCC 16.2/libgomp},
     };
 }
 
@@ -65,7 +68,17 @@ sub validate_value {
     return undef if not defined $value;
 
     my $normalized = $value;
-    $normalized = uc($value) if $UPPERCASE_FILTER{$name};
+
+    # OpenMP 5.2 Chapter 21 states that OpenMP environment-variable values are
+    # generally case-insensitive and may contain leading/trailing whitespace.
+    # OMP_AFFINITY_FORMAT is the explicit exception: it is case-sensitive and
+    # leading/trailing whitespace is significant (Section 21.2.5).  Preserve
+    # that format string byte-for-byte; trim the other OMP_* values before
+    # applying the module's established case normalization.
+    if ( $name =~ m/\AOMP_/ and $name ne q{OMP_AFFINITY_FORMAT} ) {
+        $normalized = _trim($normalized);
+    }
+    $normalized = uc($normalized) if $UPPERCASE_FILTER{$name};
     my $validator = $VALIDATOR{$name};
     my $error = $validator->($normalized);
     die qq{(fatal) $name="$value": $error\n\n} if defined $error;
@@ -359,9 +372,11 @@ sub _validate_omp_stacksize {
 # GCC/libgomp: https://gcc.gnu.org/onlinedocs/gcc-16.2.0/libgomp/OMP_005fSCHEDULE.html
 # OpenMP 5.2: Section 21.2.1, OMP_SCHEDULE.
 # OpenMP defines [MONOTONIC|NONMONOTONIC:]STATIC|DYNAMIC|GUIDED|AUTO[,chunk],
-# with a positive chunk. GCC's libgomp manual emphasizes type[,chunk] even where
-# the OpenMP standard permits the modifier; we accept the complete OpenMP 5.2
-# grammar, which includes all forms documented by libgomp.
+# with a positive chunk. The GCC/libgomp environment-variable page still
+# documents the older type[,chunk] presentation and cites OpenMP 4.5. We accept
+# the complete OpenMP 5.2 grammar; this is a deliberate standard-facing
+# allowance, not a claim that libgomp's current prose explicitly documents the
+# modifier syntax.
 sub _validate_omp_schedule {
     my ($value) = @_;
     return if $value =~ m/\A\s*(?:(?:MONOTONIC|NONMONOTONIC)\s*:\s*)?(?:STATIC|DYNAMIC|GUIDED|AUTO)(?:\s*,\s*[1-9]\d*)?\s*\z/i;
@@ -370,9 +385,10 @@ sub _validate_omp_schedule {
 
 # GCC/libgomp: https://gcc.gnu.org/onlinedocs/gcc-16.2.0/libgomp/OMP_005fTARGET_005fOFFLOAD.html
 # OpenMP 5.2: Section 21.2.8, OMP_TARGET_OFFLOAD.
-# OpenMP defines MANDATORY, DISABLED, and DEFAULT while allowing implementation
-# latitude in device/offload support. libgomp supports these spellings. We do
-# not probe target devices or offload plugins.
+# OpenMP defines MANDATORY, DISABLED, and DEFAULT; OpenMP 5.2 specifically
+# leaves support of DISABLED implementation-defined. GCC/libgomp explicitly
+# implements all three spellings and documents host execution for DISABLED.
+# We validate the token but do not probe target devices or offload plugins.
 sub _validate_omp_target_offload { return _enum( shift, qw/MANDATORY DISABLED DEFAULT/ ) }
 
 # GCC/libgomp: https://gcc.gnu.org/onlinedocs/gcc-16.2.0/libgomp/OMP_005fTHREAD_005fLIMIT.html
@@ -406,15 +422,17 @@ sub _validate_gomp_debug { return _enum( shift, qw/0 1/ ) }
 
 # GCC/libgomp: https://gcc.gnu.org/onlinedocs/gcc-16.2.0/libgomp/GOMP_005fSTACKSIZE.html
 # OpenMP 5.2: no GOMP_STACKSIZE variable; OMP_STACKSIZE is the standard analogue.
-# libgomp documents GOMP_STACKSIZE as a numeric kilobyte value. Older
-# OpenMP::Environment releases passed arbitrary values through and the regression
-# suite includes a B/K/M/G-style value, so 1.5.0 accepts the standard
-# OMP_STACKSIZE-style unit suffixes as a compatibility extension while documenting
-# that GCC only promises numeric-kilobyte semantics for GOMP_STACKSIZE.
+# libgomp documents GOMP_STACKSIZE as a numeric kilobyte value with no unit
+# suffix. Older OpenMP::Environment releases passed arbitrary values through, and
+# the unchanged regression suite asserts an OMP_STACKSIZE-style suffixed value.
+# To preserve that public behavior, both assignment and assertion accept B/K/M/G
+# suffixes as an explicit OpenMP::Environment compatibility extension. This is
+# NOT presented as documented libgomp syntax; callers wanting the GNU-native form
+# should use an unsuffixed positive integer (kilobytes).
 sub _validate_gomp_stacksize {
     my ($value) = @_;
     return if $value =~ m/\A\s*[1-9]\d*\s*(?:[BKMG])?\s*\z/i;
-    return q{Expected a positive integer, with an optional B, K, M, or G compatibility suffix};
+    return q{Expected a positive integer, with an optional B, K, M, or G OpenMP::Environment compatibility suffix};
 }
 
 # GCC/libgomp: https://gcc.gnu.org/onlinedocs/gcc-16.2.0/libgomp/GOMP_005fSPINCOUNT.html
@@ -452,13 +470,16 @@ sub _validate_omp_teams_thread_limit { return _integer_at_least( shift, 1 ) }
 # space plus allocator traits. Several memory-space mappings and pool-size
 # defaults are implementation-defined. libgomp additionally documents its GNU
 # handling/mappings for implementation-defined allocators and GNU ompx_* names.
-# OpenMP permits fb_data, but libgomp explicitly declares it unsupported in the
-# OMP_ALLOCATOR environment string because it requires an allocator handle; strict
-# validation follows libgomp and rejects it (and allocator_fb, which would need it).
-# We do not test whether a memory space or allocator can be instantiated here.
+# OpenMP permits fb_data and allocator_fb. libgomp also lists allocator_fb as an
+# allowed fallback token, but explicitly declares fb_data unsupported in the
+# OMP_ALLOCATOR environment string because fb_data requires an allocator handle.
+# We therefore accept fallback=allocator_fb as documented by libgomp, reject an
+# explicit fb_data trait, and do not infer whether allocator_fb can provide a
+# useful fallback without fb_data. We also do not test whether a memory space or
+# allocator can actually be instantiated on the current runtime.
 sub _validate_omp_allocator {
     my ($value) = @_;
-    my $text = _trim($value);
+    my $text = lc _trim($value);
     my %allocator = map { $_ => 1 } qw/
       omp_default_mem_alloc omp_large_cap_mem_alloc omp_const_mem_alloc
       omp_high_bw_mem_alloc omp_low_lat_mem_alloc omp_cgroup_mem_alloc
@@ -495,21 +516,20 @@ sub _validate_omp_allocator {
     if ( defined $parsed{fb_data} ) {
         return q{fb_data is permitted by OpenMP but unsupported by GNU libgomp in OMP_ALLOCATOR};
     }
-    if ( defined $parsed{fallback} ) {
-        if ( lc($parsed{fallback}) eq q{allocator_fb} ) {
-            return q{fallback=allocator_fb cannot be completed in GNU libgomp OMP_ALLOCATOR because fb_data is unsupported};
-        }
-    }
     return;
 }
 
 # GCC/libgomp: https://gcc.gnu.org/onlinedocs/gcc-16.2.0/libgomp/OMP_005fAFFINITY_005fFORMAT.html
 # OpenMP 5.2: Section 21.2.5, OMP_AFFINITY_FORMAT.
 # OpenMP defines percent field syntax and explicitly permits additional
-# implementation-defined field types. libgomp documents the standard short and
-# long names. We validate the formatting grammar; unknown alphabetic short/long
-# fields are accepted as possible implementation-defined extensions. We do not
-# attempt to predict the runtime text produced for a field.
+# implementation-defined field types. A width is a positive decimal integer and
+# may appear bare (%4L), right-justified (%.4L), or zero-padded for numeric fields
+# (%0.4L). libgomp documents the standard short and long field names and the same
+# width forms. OMP_AFFINITY_FORMAT is case-sensitive and its leading/trailing
+# whitespace is significant, so validate_value deliberately does not trim it.
+# Unknown alphabetic short/long fields are accepted as possible implementation-
+# defined extensions. We validate syntax only and do not reject the standard's
+# explicitly unspecified combinations such as zero-padding a nonnumeric field.
 sub _validate_omp_affinity_format {
     my ($value) = @_;
     my $i = 0;
@@ -523,11 +543,12 @@ sub _validate_omp_affinity_format {
             next;
         }
         my $tail = substr( $value, $i );
-        if ( $tail =~ m/\A(?:0?\.\d+)?([A-Za-z])/ ) {
+        my $width = qr/(?:[1-9]\d*|(?:0\.|\.)[1-9]\d*)?/;
+        if ( $tail =~ m/\A$width([A-Za-z])/ ) {
             $i += length $&;
             next;
         }
-        if ( $tail =~ m/\A(?:0?\.\d+)?\{[A-Za-z_][A-Za-z0-9_]*\}/ ) {
+        if ( $tail =~ m/\A$width\{[A-Za-z_][A-Za-z0-9_]*\}/ ) {
             $i += length $&;
             next;
         }
@@ -565,7 +586,7 @@ sub _validate_allocator_trait {
         return _enum( $value, qw/default_mem_fb null_fb abort_fb allocator_fb/ );
     }
     if ( $name eq q{fb_data} ) {
-        return undef if $allocators->{$value};
+        return undef if $allocators->{ lc $value };
         return q{fb_data must name a predefined allocator};
     }
     if ( $name eq q{pinned} ) {
@@ -708,8 +729,10 @@ shipped/documented with GCC 16.2.0.  The module distinguishes between:
 
 =item * INVALID
 
-A value does not satisfy the portable OpenMP grammar or the documented GNU
-libgomp grammar for a GNU extension.
+A value does not satisfy this module's selected validation profile: the OpenMP
+5.2 grammar, plus an explicitly documented GCC/libgomp restriction when GNU's
+documented grammar is narrower.  Such GNU-profile restrictions are called out
+individually rather than being presented as portable OpenMP requirements.
 
 =item * CONFLICT / IMPLEMENTATION-DEFINED COMBINATION
 
@@ -741,14 +764,33 @@ particular runtime may be unable to honor them:
   OMP_STACKSIZE=64G
   OMP_THREAD_LIMIT=100000
 
+=head1 OPENMP VALUE SYNTAX AND NORMALIZATION
+
+OpenMP 5.2 Chapter 21 states that OpenMP environment-variable values are
+generally case-insensitive and may contain leading and trailing whitespace.
+Strict validation therefore ignores surrounding whitespace for supported
+C<OMP_*> variables before validating them.  The established upper-case
+normalization used by C<OpenMP::Environment> is retained for its historical
+boolean/token fields.
+
+C<OMP_AFFINITY_FORMAT> is the important exception.  Section 21.2.5 explicitly
+states that its value is case-sensitive and that leading and trailing
+whitespace is significant.  This module therefore preserves that string
+exactly.
+
+The C<GOMP_*> variables are GNU extensions rather than OpenMP Chapter 21
+variables; their syntax follows the libgomp documentation rather than assuming
+that every general OpenMP lexical rule applies to them.
+
 =head1 API
 
 =head2 validate_value NAME, VALUE
 
-Validates one canonical C<OMP_*> or C<GOMP_*> value and returns the value after
-legacy-compatible normalization.  The same six variables upper-cased by older
-C<OpenMP::Environment> releases continue to be upper-cased.  Dies on invalid
-input.
+Validates one supported C<OMP_*> or C<GOMP_*> value and returns the value after
+normalization.  For C<OMP_*> values, surrounding whitespace is ignored except
+for C<OMP_AFFINITY_FORMAT>, where it is significant.  The same six variables
+upper-cased by older C<OpenMP::Environment> releases continue to be upper-cased.
+Dies on invalid input.
 
 =head2 validate_assignment NAME, VALUE
 
@@ -782,8 +824,11 @@ It never performs host/resource discovery.
 
 =head2 validation_rules
 
-Returns introspection metadata describing the supported fields, normalized
-fields, and validator routines.
+Returns introspection metadata describing the supported fields, historical
+upper-case normalization, variables validated on ordinary assignment, fields
+whose whitespace is significant, validator routines, and the validation profile.
+This is intended to make the policy useful to machine consumers as well as to
+human readers of this POD.
 
 =head1 PER-VARIABLE REFERENCE
 
@@ -803,6 +848,27 @@ L<https://gcc.gnu.org/onlinedocs/gcc-16.2.0/libgomp/OMP_005fNUM_005fTHREADS.html
 
 OpenMP 5.2:
 L<https://www.openmp.org/spec-html/5.2/openmp.html>, Section 21.1.2.
+
+=head2 OMP_MAX_ACTIVE_LEVELS
+
+OpenMP 5.2 Section 21.1.4 permits a B<non-negative> integer, so zero is valid
+according to the OpenMP grammar.  GCC/libgomp documents this environment
+variable more narrowly as a B<positive> integer.  Earlier
+C<OpenMP::Environment> releases also rejected zero.  Because this distribution
+is explicitly profiled against GCC 16.2/libgomp, strict validation retains the
+GNU/legacy positive-integer rule.
+
+  Valid in this GCC/libgomp profile: OMP_MAX_ACTIVE_LEVELS=1
+  OpenMP-valid but rejected here:   OMP_MAX_ACTIVE_LEVELS=0
+  Invalid:                          OMP_MAX_ACTIVE_LEVELS=-1
+
+Values above the maximum nesting level supported by a particular runtime are
+implementation-defined and are not system-probed here.
+
+GCC/libgomp:
+L<https://gcc.gnu.org/onlinedocs/gcc-16.2.0/libgomp/OMP_005fMAX_005fACTIVE_005fLEVELS.html>
+
+OpenMP 5.2: Section 21.1.4 and Appendix A.
 
 =head2 OMP_PROC_BIND
 
@@ -872,11 +938,14 @@ C<M>, or C<G> unit for C<OMP_STACKSIZE>; libgomp uses kilobytes when the unit
 is omitted.  Whether the requested stack can actually be provided is
 implementation-dependent and is not checked.
 
-GNU C<GOMP_STACKSIZE> is an extension documented as a numeric kilobyte value.
-Older C<OpenMP::Environment> releases did not validate it, and the historical
-regression suite contains unit-suffixed input.  Version 1.5.0 therefore accepts
-the OMP-style suffixes for C<GOMP_STACKSIZE> as a documented compatibility
-extension while noting that GCC only promises numeric-kilobyte semantics.
+GNU C<GOMP_STACKSIZE> is an extension documented as a positive numeric value
+in kilobytes, with no unit suffix.  Older C<OpenMP::Environment> releases did
+not validate this variable, and the unchanged regression suite includes and
+asserts a unit-suffixed value.  Version 1.5.0 therefore accepts C<B>, C<K>,
+C<M>, and C<G> suffixes as an explicit B<OpenMP::Environment compatibility
+extension> in both assignment and assertion.  This POD does not claim those
+suffixes are valid libgomp C<GOMP_STACKSIZE> syntax; the GNU-native spelling is
+an unsuffixed positive integer interpreted as kilobytes.
 
 =head2 OMP_ALLOCATOR
 
@@ -884,14 +953,18 @@ OpenMP 5.2 Section 21.5.1 and Sections 6.1-6.2 define predefined allocators,
 predefined memory spaces, and allocator traits.  This module checks the trait
 vocabulary and intrinsic constraints including positive power-of-two
 C<alignment>, positive C<pool_size>, booleans, fallback values, and predefined
-allocator traits.  OpenMP permits C<fb_data> for C<allocator_fb>, but GNU
-libgomp explicitly marks C<fb_data> unsupported in C<OMP_ALLOCATOR> because an
-environment string cannot supply the required allocator handle.  Strict
-validation therefore rejects C<fb_data> and C<fallback=allocator_fb> while
-ordinary assignment remains pass-through for compatibility.
+allocator traits.  OpenMP permits C<fb_data> for C<allocator_fb>.  GNU libgomp
+still lists C<allocator_fb> as an allowed C<fallback> token, but explicitly marks
+C<fb_data> unsupported in the C<OMP_ALLOCATOR> environment string because it
+requires an allocator handle.  Strict validation therefore accepts the
+documented C<fallback=allocator_fb> token, rejects an explicit C<fb_data> trait,
+and deliberately does not infer whether a useful allocator fallback can be
+constructed without C<fb_data>.  Ordinary assignment remains pass-through for
+compatibility.
 
   Valid: OMP_ALLOCATOR=omp_high_bw_mem_alloc
   Valid: OMP_ALLOCATOR=omp_large_cap_mem_space:alignment=16,pinned=true
+  Valid: OMP_ALLOCATOR=omp_low_lat_mem_space:fallback=allocator_fb
   GNU:   OMP_ALLOCATOR=ompx_gnu_pinned_mem_alloc
   Invalid: OMP_ALLOCATOR=omp_low_lat_mem_space:alignment=3
   libgomp-invalid: OMP_ALLOCATOR=omp_default_mem_space:fb_data=omp_default_mem_alloc
@@ -909,15 +982,25 @@ L<https://www.openmp.org/spec-html/5.2/openmpse35.html>
 =head2 OMP_AFFINITY_FORMAT
 
 OpenMP 5.2 Section 21.2.5 specifies a percent-field format and permits
-implementation-defined additional field types.  GNU libgomp documents the
-standard short fields and long names.  The validator checks the percent/width
-syntax and accepts syntactically valid unknown alphabetic field names as
-possible implementation extensions.
+implementation-defined additional field types.  A field width is a positive
+decimal integer and can be written as a bare minimum width (C<%4L>), as a
+right-justified width (C<%.4L>), or with zero padding for numeric fields
+(C<%0.4L>).  GNU libgomp documents the same width forms and the standard short
+and long field names.  Syntactically valid unknown alphabetic field names are
+accepted as possible implementation extensions.
+
+The value is case-sensitive and leading/trailing whitespace is significant;
+strict validation preserves it rather than applying the general OpenMP
+whitespace normalization.  OpenMP says the result is unspecified when the
+zero-padding modifier is used for a nonnumeric field; that is not a syntax
+error, so this validator does not reject it.
 
   Valid:   OMP_AFFINITY_FORMAT=thread %n affinity %A
-  Valid:   OMP_AFFINITY_FORMAT=level %.4L thread %0.2n
+  Valid:   OMP_AFFINITY_FORMAT=level %4L thread %0.2n
+  Valid:   OMP_AFFINITY_FORMAT=host %.12{host}
   Valid:   OMP_AFFINITY_FORMAT=%% %n
   Invalid: OMP_AFFINITY_FORMAT=thread %
+  Invalid: OMP_AFFINITY_FORMAT=level %.0L
 
 =head2 GOMP_CPU_AFFINITY
 
@@ -947,6 +1030,58 @@ This GNU/RTEMS-only variable uses colon-separated
 C<count[$priority]@scheduler> configurations.  The documented libgomp example
 C<1@WRK0:3$4@WRK1> is valid.  Scheduler existence and permissible RTEMS
 priority ranges are not queried.
+
+=head2 Other scalar and token variables
+
+The remaining standard variables use smaller grammars but still have
+implementation-defined edges worth distinguishing from syntax errors:
+
+=over 4
+
+=item * C<OMP_CANCELLATION> and C<OMP_DISPLAY_AFFINITY>
+
+C<TRUE> or C<FALSE>.  OpenMP makes other values implementation-defined for
+C<OMP_CANCELLATION> and makes the display action implementation-defined for
+other C<OMP_DISPLAY_AFFINITY> values.
+
+=item * C<OMP_DISPLAY_ENV>
+
+C<TRUE>, C<FALSE>, or C<VERBOSE>.  OpenMP says the displayed information is
+unspecified for other values.
+
+=item * C<OMP_DEFAULT_DEVICE> and C<OMP_MAX_TASK_PRIORITY>
+
+Non-negative integers.  Device existence and runtime priority capability are
+not probed.
+
+=item * C<OMP_DYNAMIC> and deprecated C<OMP_NESTED>
+
+OpenMP defines boolean values.  C<OpenMP::Environment> additionally retains
+its historical C<1>/C<0> compatibility.  C<OMP_NESTED> also participates in
+the cross-variable rule documented below.
+
+=item * C<OMP_NUM_TEAMS>, C<OMP_TEAMS_THREAD_LIMIT>, and C<OMP_THREAD_LIMIT>
+
+Positive integers.  OpenMP makes behavior implementation-defined when a value
+is invalid or exceeds an implementation limit; this module validates syntax
+but does not query those limits.
+
+=item * C<OMP_TARGET_OFFLOAD>
+
+C<MANDATORY>, C<DISABLED>, or C<DEFAULT>.  OpenMP 5.2 makes support of
+C<DISABLED> implementation-defined; GCC/libgomp explicitly implements all
+three values.
+
+=item * C<OMP_WAIT_POLICY>
+
+C<ACTIVE> or C<PASSIVE>.  The detailed waiting behavior is implementation-
+defined.
+
+=item * C<GOMP_DEBUG>
+
+GNU extension accepting C<0> or C<1>.
+
+=back
 
 =head1 CROSS-VARIABLE RULES
 

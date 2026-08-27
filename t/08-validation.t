@@ -22,6 +22,9 @@ my $rules = validation_rules();
 is scalar( @{ $rules->{fields} } ), 25, q{validation metadata contains every supported field};
 is scalar( keys %{ $rules->{validators} } ), 25, q{validation metadata contains every validator};
 ok grep( { $_ eq q{OMP_CANCELLATION} } @{ $rules->{normalized} } ), q{validation metadata records legacy-normalized variables};
+ok grep( { $_ eq q{OMP_NUM_THREADS} } @{ $rules->{assignment_validated} } ), q{validation metadata records variables validated during compatible assignment};
+is_deeply $rules->{whitespace_significant}, [ q{OMP_AFFINITY_FORMAT} ], q{validation metadata identifies the OpenMP whitespace-significant exception};
+is $rules->{profile}, q{OpenMP 5.2 + GCC 16.2/libgomp}, q{validation metadata names the selected standards/runtime profile};
 
 local $@;
 eval { validate_value( undef, 1 ) };
@@ -39,10 +42,12 @@ like $@, qr/Unsupported/, q{validate_assignment rejects unsupported names};
 is validate_assignment( q{GOMP_SPINCOUNT}, undef ), undef, q{validate_assignment passes undef through};
 
 is validate_value( q{OMP_CANCELLATION}, q{true} ), q{TRUE}, q{OMP_CANCELLATION accepts true};
+is validate_value( q{OMP_CANCELLATION}, q{  true  } ), q{TRUE}, q{OMP_CANCELLATION accepts OpenMP-permitted surrounding whitespace};
 rejects( q{OMP_CANCELLATION}, q{sometimes}, q{OMP_CANCELLATION rejects unknown boolean}, qr/TRUE/ );
 is validate_value( q{OMP_DISPLAY_ENV}, q{verbose} ), q{VERBOSE}, q{OMP_DISPLAY_ENV accepts VERBOSE};
 rejects( q{OMP_DISPLAY_ENV}, q{ALL}, q{OMP_DISPLAY_ENV rejects unknown display level} );
 is validate_value( q{OMP_DEFAULT_DEVICE}, 0 ), 0, q{OMP_DEFAULT_DEVICE accepts zero};
+is validate_value( q{OMP_DEFAULT_DEVICE}, q{  0  } ), q{0}, q{OMP_DEFAULT_DEVICE ignores surrounding OpenMP whitespace in strict validation};
 rejects( q{OMP_DEFAULT_DEVICE}, -1, q{OMP_DEFAULT_DEVICE rejects negative values}, qr/integer/ );
 rejects( q{OMP_DEFAULT_DEVICE}, q{gpu0}, q{OMP_DEFAULT_DEVICE rejects non-integers}, qr/integer/ );
 is validate_value( q{OMP_NUM_TEAMS}, 1 ), 1, q{OMP_NUM_TEAMS accepts a positive integer};
@@ -51,7 +56,7 @@ is validate_value( q{OMP_DYNAMIC}, q{true} ), q{true}, q{OMP_DYNAMIC accepts tru
 is validate_value( q{OMP_DYNAMIC}, 1 ), 1, q{OMP_DYNAMIC retains historical numeric true support};
 rejects( q{OMP_DYNAMIC}, q{maybe}, q{OMP_DYNAMIC rejects non-boolean value} );
 is validate_value( q{OMP_MAX_ACTIVE_LEVELS}, 1 ), 1, q{OMP_MAX_ACTIVE_LEVELS follows libgomp positive-integer rule};
-rejects( q{OMP_MAX_ACTIVE_LEVELS}, 0, q{OMP_MAX_ACTIVE_LEVELS preserves pre-1.5/libgomp rejection of zero} );
+rejects( q{OMP_MAX_ACTIVE_LEVELS}, 0, q{OMP_MAX_ACTIVE_LEVELS applies the documented libgomp/legacy positive-integer profile even though OpenMP 5.2 permits zero} );
 is validate_value( q{OMP_MAX_TASK_PRIORITY}, 0 ), 0, q{OMP_MAX_TASK_PRIORITY accepts zero};
 rejects( q{OMP_MAX_TASK_PRIORITY}, -1, q{OMP_MAX_TASK_PRIORITY rejects negative values} );
 is validate_value( q{OMP_NESTED}, q{true} ), q{TRUE}, q{OMP_NESTED retains uppercase filter};
@@ -95,6 +100,7 @@ for my $value ( q{static}, q{dynamic,4}, q{guided,8}, q{auto}, q{monotonic:stati
 rejects( q{OMP_SCHEDULE}, q{banana}, q{OMP_SCHEDULE rejects an unknown kind} );
 rejects( q{OMP_SCHEDULE}, q{dynamic,0}, q{OMP_SCHEDULE rejects zero chunk size} );
 rejects( q{OMP_SCHEDULE}, q{random:dynamic,4}, q{OMP_SCHEDULE rejects an unknown modifier} );
+is validate_value( q{OMP_SCHEDULE}, q{  dynamic,4  } ), q{dynamic,4}, q{OMP_SCHEDULE ignores surrounding OpenMP whitespace};
 
 is validate_value( q{OMP_TARGET_OFFLOAD}, q{mandatory} ), q{MANDATORY}, q{OMP_TARGET_OFFLOAD normalizes a standard value};
 rejects( q{OMP_TARGET_OFFLOAD}, q{FORCE}, q{OMP_TARGET_OFFLOAD rejects an unknown mode} );
@@ -111,7 +117,9 @@ rejects( q{GOMP_CPU_AFFINITY}, q{4-8:0}, q{GOMP_CPU_AFFINITY rejects zero stride
 is validate_value( q{GOMP_DEBUG}, 0 ), 0, q{GOMP_DEBUG accepts zero};
 is validate_value( q{GOMP_DEBUG}, 1 ), 1, q{GOMP_DEBUG accepts one};
 rejects( q{GOMP_DEBUG}, 2, q{GOMP_DEBUG rejects values outside 0/1} );
-is validate_value( q{GOMP_STACKSIZE}, q{1024G} ), q{1024G}, q{GOMP_STACKSIZE preserves historical unit-suffix compatibility};
+is validate_value( q{GOMP_STACKSIZE}, q{1024} ), q{1024}, q{GOMP_STACKSIZE accepts the GNU-native numeric-kilobyte form};
+is validate_value( q{GOMP_STACKSIZE}, q{1024G} ), q{1024G}, q{GOMP_STACKSIZE retains the documented OpenMP::Environment unit-suffix compatibility extension};
+is validate_assignment( q{GOMP_STACKSIZE}, q{1024G} ), q{1024G}, q{GOMP_STACKSIZE assignment remains pass-through for pre-1.5 compatibility};
 rejects( q{GOMP_STACKSIZE}, 0, q{GOMP_STACKSIZE rejects zero} );
 for my $value ( q{0}, q{300000}, q{4k}, q{30M}, q{2G}, q{1T}, q{INFINITE}, q{INFINITY} ) {
     is validate_value( q{GOMP_SPINCOUNT}, $value ), $value, qq{GOMP_SPINCOUNT accepts $value};
@@ -142,7 +150,8 @@ rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:pinned=maybe}, q{OMP_ALLOCATO
 rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:partition=random}, q{OMP_ALLOCATOR validates partition values} );
 rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:access=process}, q{OMP_ALLOCATOR validates access values} );
 rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:sync_hint=often}, q{OMP_ALLOCATOR validates sync_hint values} );
-rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:fallback=allocator_fb}, q{OMP_ALLOCATOR rejects allocator_fb because libgomp cannot express fb_data} );
+is validate_value( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:fallback=allocator_fb} ), q{omp_low_lat_mem_space:fallback=allocator_fb}, q{OMP_ALLOCATOR accepts allocator_fb because libgomp explicitly lists it as an allowed fallback token};
+is validate_value( q{OMP_ALLOCATOR}, q{OMP_HIGH_BW_MEM_ALLOC} ), q{OMP_HIGH_BW_MEM_ALLOC}, q{OMP_ALLOCATOR values are case-insensitive under the general OpenMP environment rule};
 rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:fb_data=not_an_allocator}, q{OMP_ALLOCATOR validates fb_data allocator names before applying the libgomp restriction} );
 rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:fb_data=omp_default_mem_alloc}, q{OMP_ALLOCATOR rejects OpenMP fb_data because libgomp documents it as unsupported} );
 is validate_value( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:fallback=default_mem_fb} ), q{omp_low_lat_mem_space:fallback=default_mem_fb}, q{OMP_ALLOCATOR accepts non-handle fallback choices};
@@ -150,11 +159,14 @@ rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:alignment=16,alignment=32}, q
 rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:mystery=yes}, q{OMP_ALLOCATOR rejects unknown traits} );
 rejects( q{OMP_ALLOCATOR}, q{omp_low_lat_mem_space:pinned}, q{OMP_ALLOCATOR rejects malformed traits} );
 
-for my $value ( q{literal text}, q{thread %n affinity %A}, q{level %.4L thread %0.2n}, q{%% %n}, q{%{thread_num}}, q{vendor %x} ) {
+for my $value ( q{literal text}, q{thread %n affinity %A}, q{level %4L thread %0.2n}, q{host %.12{host}}, q{%% %n}, q{%{thread_num}}, q{vendor %x} ) {
     is validate_value( q{OMP_AFFINITY_FORMAT}, $value ), $value, qq{OMP_AFFINITY_FORMAT accepts $value};
 }
+is validate_value( q{OMP_AFFINITY_FORMAT}, q{  %n  } ), q{  %n  }, q{OMP_AFFINITY_FORMAT preserves significant leading and trailing whitespace};
 rejects( q{OMP_AFFINITY_FORMAT}, q{thread %}, q{OMP_AFFINITY_FORMAT rejects a trailing percent} );
 rejects( q{OMP_AFFINITY_FORMAT}, q{thread %0n}, q{OMP_AFFINITY_FORMAT rejects malformed width syntax} );
+rejects( q{OMP_AFFINITY_FORMAT}, q{thread %.0L}, q{OMP_AFFINITY_FORMAT rejects a zero minimum width} );
+rejects( q{OMP_AFFINITY_FORMAT}, q{thread %0.0L}, q{OMP_AFFINITY_FORMAT rejects a zero-padded zero minimum width} );
 rejects( q{OMP_AFFINITY_FORMAT}, q{thread %{bad-name}}, q{OMP_AFFINITY_FORMAT rejects malformed long field name} );
 is validate_value( q{OMP_DISPLAY_AFFINITY}, q{false} ), q{FALSE}, q{OMP_DISPLAY_AFFINITY accepts and normalizes false};
 rejects( q{OMP_DISPLAY_AFFINITY}, q{sometimes}, q{OMP_DISPLAY_AFFINITY rejects non-boolean value} );

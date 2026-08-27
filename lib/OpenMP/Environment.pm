@@ -98,9 +98,16 @@ sub _no_validate {
 
 sub _is_legacy_false_value {
     my ($value) = @_;
-    return 1 if not $value;
-    return 1 if $value eq q{false};
-    return 1 if $value eq q{FALSE};
+    return 1 if not defined $value;
+
+    # OpenMP environment values are generally allowed surrounding whitespace.
+    # Preserve the historical false-value-unsets behavior when that standard
+    # spelling is used, including case-insensitive FALSE and numeric zero.
+    my $test = $value;
+    $test =~ s/\A\s+//;
+    $test =~ s/\s+\z//;
+    return 1 if not $test;
+    return 1 if lc($test) eq q{false};
     return 0;
 }
 
@@ -857,10 +864,18 @@ explicit unsetters for the OpenMP and GNU libgomp environment variables
 documented by GCC 16.2.0. The module changes C<%ENV>; it does not implement
 OpenMP itself.
 
-GCC 16.2.0 reports C<_OPENMP=202111>, corresponding to OpenMP 5.2. Its
-libgomp documentation contains 25 canonical OpenMP/GOMP environment-variable
-names, and this release exposes all 25 while retaining the accessors and
-semantics from earlier C<OpenMP::Environment> releases.
+GCC 16.2.0 reports C<_OPENMP=202111>, corresponding to OpenMP 5.2. The
+GCC/libgomp B<OpenMP Environment Variables> chapter lists 25 C<OMP_*> and
+C<GOMP_*> variables, and this release exposes that complete 25-variable libgomp
+set while retaining the accessors and semantics from earlier
+C<OpenMP::Environment> releases.
+
+OpenMP 5.2 itself defines additional tool/debugging environment variables,
+including C<OMP_TOOL>, C<OMP_TOOL_LIBRARIES>, C<OMP_TOOL_VERBOSE_INIT>, and
+C<OMP_DEBUG>.  They are not part of libgomp's 25-variable environment chapter
+and are outside the API scope of this release; the phrase "all 25" in this
+document always means the 25 variables listed by libgomp, not every environment
+variable appearing anywhere in OpenMP 5.2.
 
 The current API supports:
 
@@ -874,7 +889,7 @@ The current API supports:
 
 =item * comma-separated positive-integer lists for C<OMP_NUM_THREADS>
 
-=item * validated lvalue assignment for all C<omp_*> and C<gomp_*> accessors
+=item * lvalue assignment for all C<omp_*> and C<gomp_*> accessors, routed through the same compatibility validation policy as traditional setters
 
 =back
 
@@ -915,9 +930,12 @@ broken.
 
 =head2 Assignment compatibility
 
-Traditional setters and lvalue assignment retain the pre-1.5.0 validation
-contract.  Variables that were already validated continue to be validated and
-normalized.  Variables that historically accepted arbitrary strings continue
+Traditional setters and lvalue assignment retain every value and behavior
+accepted by the pre-1.5.0 validation contract.  Variables that were already
+validated continue to be validated and normalized.  Version 1.5.0 additionally
+recognizes the OpenMP rule that surrounding whitespace is permitted for OpenMP
+environment values (except C<OMP_AFFINITY_FORMAT>, where whitespace is
+significant).  Variables that historically accepted arbitrary strings continue
 to accept them on assignment:
 
   $env->gomp_spincount = q{legacy application value};
@@ -928,7 +946,8 @@ releases explicitly documented several complex grammars as pass-through.
 =head2 Strict assertion
 
 The new C<assert> DSL and the existing C<assert_omp_environment> method use the
-strict validation engine for all 25 canonical variables:
+strict validation engine for all 25 variables listed in GCC/libgomp's OpenMP
+environment-variable chapter:
 
   use OpenMP::Environment qw/:assert/;
 
@@ -1141,7 +1160,10 @@ Deletes C<OMP_DYNAMIC>.
 
 =item C<omp_max_active_levels([$value])>
 
-Getter/setter for C<OMP_MAX_ACTIVE_LEVELS>. Validated as a positive integer.
+Getter/setter for C<OMP_MAX_ACTIVE_LEVELS>.  GCC/libgomp documents a positive
+integer and this module preserves that GNU/legacy rule.  OpenMP 5.2 itself
+permits a non-negative integer, so zero is OpenMP-valid but is rejected by this
+GCC/libgomp-oriented validation profile.
 
 =item C<unset_omp_max_active_levels>
 
