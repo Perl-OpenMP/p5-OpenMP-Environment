@@ -1,79 +1,91 @@
-package OpenMP::Environment; 
+package OpenMP::Environment;
 use strict;
 use warnings;
 
-use Validate::Tiny qw/filter is_in/;
+use Carp qw/croak/;
+use Dispatch::Fu qw/dispatch on xdefault/;
+use OpenMP::Environment::Constants ();
+use OpenMP::Environment::Validation ();
 
-our $VERSION = q{1.4.0};
+our $VERSION = q{1.5.0};
 
-our @_OMP_VARS = (
-    qw/OMP_CANCELLATION OMP_DISPLAY_ENV OMP_DEFAULT_DEVICE OMP_NUM_TEAMS
-      OMP_DYNAMIC OMP_MAX_ACTIVE_LEVELS OMP_MAX_TASK_PRIORITY OMP_NESTED
-      OMP_NUM_THREADS OMP_PROC_BIND OMP_PLACES OMP_STACKSIZE OMP_SCHEDULE
-      OMP_TARGET_OFFLOAD OMP_THREAD_LIMIT OMP_WAIT_POLICY GOMP_CPU_AFFINITY
-      GOMP_DEBUG GOMP_STACKSIZE GOMP_SPINCOUNT GOMP_RTEMS_THREAD_POOLS
-      OMP_TEAMS_THREAD_LIMIT OMP_ALLOCATOR OMP_AFFINITY_FORMAT
-      OMP_DISPLAY_AFFINITY/
-);
+our @_OMP_VARS = OpenMP::Environment::Constants::environment_names();
 
 # capture state of %ENV
 local %ENV = %ENV;
 
+# The DSL is deliberately opt-in.  Constants are installed directly into the
+# caller from OpenMP::Environment::Constants so their names never collide with
+# the identically named accessor methods in this package.
+sub import {
+    my ( $pkg, @imports ) = @_;
+    return if not @imports;
+
+    my $caller = caller;
+    my %export;
+    my %constant = map { $_ => 1 } OpenMP::Environment::Constants::constant_names();
+
+    foreach my $item (@imports) {
+        if ( $item eq q{:unset} ) {
+            $export{unset} = 1;
+            $export{$_} = 1 for keys %constant;
+        }
+        elsif ( $item eq q{:assert} ) {
+            $export{assert} = 1;
+            $export{$_} = 1 for keys %constant;
+        }
+        elsif ( $item eq q{:dsl} ) {
+            $export{unset} = 1;
+            $export{assert} = 1;
+            $export{$_} = 1 for keys %constant;
+        }
+        elsif ( $item eq q{unset} or $item eq q{assert} or $constant{$item} ) {
+            $export{$item} = 1;
+        }
+        else {
+            croak qq{"$item" is not exported by OpenMP::Environment};
+        }
+    }
+
+    no strict q{refs};
+    no warnings q{redefine};
+    *{"${caller}::unset"} = \&unset if $export{unset};
+    *{"${caller}::assert"} = \&assert if $export{assert};
+    foreach my $name ( sort keys %constant ) {
+        next if not $export{$name};
+        *{"${caller}::$name"} = OpenMP::Environment::Constants->can($name);
+    }
+    return;
+}
+
 # constructor
 sub new {
     my $pkg = shift;
-
-    my $validate_rules = {
-        fields  => \@_OMP_VARS,
-        filters => [
-            [qw/OMP_CANCELLATION OMP_NESTED OMP_DISPLAY_AFFINITY OMP_DISPLAY_ENV OMP_TARGET_OFFLOAD OMP_WAIT_POLICY/] => filter('uc'),    # force to upper case for convenience
-        ],
-        checks => [
-            [qw/OMP_DYNAMIC OMP_NESTED/]                                 => is_in( [qw/TRUE true 1 FALSE false 0/],  q{Expected values are: 'true', 1, 'false', or 0} ),
-            [qw/OMP_CANCELLATION OMP_DISPLAY_AFFINITY/]                  => is_in( [qw/TRUE FALSE/],                 q{Expected values are: 'TRUE' or 'FALSE'} ),
-            OMP_DISPLAY_ENV                                              => is_in( [qw/TRUE VERBOSE FALSE/],         q{Expected values are: 'TRUE', 'VERBOSE', or 'FALSE'} ),
-            OMP_TARGET_OFFLOAD                                           => is_in( [qw/MANDATORY DISABLED DEFAULT/], q{Expected values are: 'MANDATORY', 'DISABLED', or 'DEFAULT'} ),
-            OMP_WAIT_POLICY                                              => is_in( [qw/ACTIVE PASSIVE/],             q{Expected values are: 'ACTIVE' or 'PASSIVE'} ),
-            GOMP_DEBUG                                                   => is_in( [qw/0 1/],                        q{Expected values are: 0 or 1} ),
-            [qw/OMP_MAX_TASK_PRIORITY OMP_DEFAULT_DEVICE/]               => sub { return _is_ge_if_set( 0, @_ ) },
-            OMP_NUM_THREADS                                              => sub { return _is_positive_integer_list_if_set(@_) },
-            [qw/OMP_MAX_ACTIVE_LEVELS OMP_THREAD_LIMIT/]                 => sub { return _is_ge_if_set( 1, @_ ) },
-            [qw/OMP_NUM_TEAMS OMP_TEAMS_THREAD_LIMIT/]                   => sub { return _is_ge_if_set( 1, @_ ) },
-
-            #-- the following are not current validated due to the complexity of the rules associated with their values
-            OMP_ALLOCATOR           => _no_validate(),
-            OMP_AFFINITY_FORMAT     => _no_validate(),
-            OMP_PROC_BIND           => _no_validate(),
-            OMP_PLACES              => _no_validate(),
-            OMP_STACKSIZE           => _no_validate(),
-            OMP_SCHEDULE            => _no_validate(),
-            GOMP_CPU_AFFINITY       => _no_validate(),
-            GOMP_STACKSIZE          => _no_validate(),
-            GOMP_SPINCOUNT          => _no_validate(),
-            GOMP_RTEMS_THREAD_POOLS => _no_validate(),
-        ],
+    my $self = {
+        _validation_rules => OpenMP::Environment::Validation::validation_rules(),
     };
-
-    sub _is_ge_if_set {
-        my ( $min, $value ) = @_;
-        if ( not defined $value ) {
-            return;
-        }
-        elsif ( $value =~ m/\D/ or $value lt $min ) {
-            return q{Value must be an integer great than or equal to 1};
-        }
-        return;
-    }
-
-    sub _is_positive_integer_list_if_set {
-        my ($value) = @_;
-        return if not defined $value;
-        return if $value =~ m/\A\s*[1-9]\d*(?:\s*,\s*[1-9]\d*)*\s*\z/;
-        return q{Value must be a comma-separated list of positive integers};
-    }
-
-    my $self = { _validation_rules => $validate_rules, };
     return bless $self, $pkg;
+}
+
+# Backward-compatible private validator helpers retained because older callers
+# and the regression suite may invoke them directly.
+sub _is_ge_if_set {
+    my ( $min, $value ) = @_;
+    return if not defined $value;
+    return q{Value must be an integer great than or equal to 1}
+      if $value =~ m/\D/ or $value < $min;
+    return;
+}
+
+sub _is_positive_integer_list_if_set {
+    my ($value) = @_;
+    return if not defined $value;
+    return if $value =~ m/\A\s*[1-9]\d*(?:\s*,\s*[1-9]\d*)*\s*\z/;
+    return q{Value must be a comma-separated list of positive integers};
+}
+
+sub _no_validate {
+    return sub { return undef };
 }
 
 # returns a list of variables supported (no values)
@@ -528,18 +540,90 @@ sub unset_gomp_rtems_thread_pools {
     return delete $ENV{$ev};
 }
 
-# auxilary validation routines for with Validate::Tiny
+# Functional DSL operations.  Dispatch::Fu supplies a static whitelist: an
+# arbitrary environment-variable string cannot be deleted or asserted through
+# these functions unless it is one of the 25 canonical constants.
+sub _unset_case {
+    my ($ev) = @_;
+    return delete $ENV{$ev};
+}
+
+sub _assert_case {
+    my ($ev) = @_;
+    return OpenMP::Environment::Validation::assert_variable( \%ENV, $ev );
+}
+
+sub unset($) {
+    my ($ev) = @_;
+    return dispatch {
+        xdefault shift;
+    }
+    $ev,
+      on default                   => sub { croak qq{Unsupported OpenMP/libgomp environment variable "$ev"} },
+      on q{OMP_CANCELLATION}       => \&_unset_case,
+      on q{OMP_DISPLAY_ENV}        => \&_unset_case,
+      on q{OMP_DEFAULT_DEVICE}     => \&_unset_case,
+      on q{OMP_NUM_TEAMS}          => \&_unset_case,
+      on q{OMP_DYNAMIC}            => \&_unset_case,
+      on q{OMP_MAX_ACTIVE_LEVELS}  => \&_unset_case,
+      on q{OMP_MAX_TASK_PRIORITY}  => \&_unset_case,
+      on q{OMP_NESTED}             => \&_unset_case,
+      on q{OMP_NUM_THREADS}        => \&_unset_case,
+      on q{OMP_PROC_BIND}          => \&_unset_case,
+      on q{OMP_PLACES}             => \&_unset_case,
+      on q{OMP_STACKSIZE}          => \&_unset_case,
+      on q{OMP_SCHEDULE}           => \&_unset_case,
+      on q{OMP_TARGET_OFFLOAD}     => \&_unset_case,
+      on q{OMP_THREAD_LIMIT}       => \&_unset_case,
+      on q{OMP_WAIT_POLICY}        => \&_unset_case,
+      on q{GOMP_CPU_AFFINITY}      => \&_unset_case,
+      on q{GOMP_DEBUG}             => \&_unset_case,
+      on q{GOMP_STACKSIZE}         => \&_unset_case,
+      on q{GOMP_SPINCOUNT}         => \&_unset_case,
+      on q{GOMP_RTEMS_THREAD_POOLS} => \&_unset_case,
+      on q{OMP_TEAMS_THREAD_LIMIT} => \&_unset_case,
+      on q{OMP_ALLOCATOR}          => \&_unset_case,
+      on q{OMP_AFFINITY_FORMAT}    => \&_unset_case,
+      on q{OMP_DISPLAY_AFFINITY}   => \&_unset_case;
+}
+
+sub assert($) {
+    my ($ev) = @_;
+    return dispatch {
+        xdefault shift;
+    }
+    $ev,
+      on default                   => sub { croak qq{Unsupported OpenMP/libgomp environment variable "$ev"} },
+      on q{OMP_CANCELLATION}       => \&_assert_case,
+      on q{OMP_DISPLAY_ENV}        => \&_assert_case,
+      on q{OMP_DEFAULT_DEVICE}     => \&_assert_case,
+      on q{OMP_NUM_TEAMS}          => \&_assert_case,
+      on q{OMP_DYNAMIC}            => \&_assert_case,
+      on q{OMP_MAX_ACTIVE_LEVELS}  => \&_assert_case,
+      on q{OMP_MAX_TASK_PRIORITY}  => \&_assert_case,
+      on q{OMP_NESTED}             => \&_assert_case,
+      on q{OMP_NUM_THREADS}        => \&_assert_case,
+      on q{OMP_PROC_BIND}          => \&_assert_case,
+      on q{OMP_PLACES}             => \&_assert_case,
+      on q{OMP_STACKSIZE}          => \&_assert_case,
+      on q{OMP_SCHEDULE}           => \&_assert_case,
+      on q{OMP_TARGET_OFFLOAD}     => \&_assert_case,
+      on q{OMP_THREAD_LIMIT}       => \&_assert_case,
+      on q{OMP_WAIT_POLICY}        => \&_assert_case,
+      on q{GOMP_CPU_AFFINITY}      => \&_assert_case,
+      on q{GOMP_DEBUG}             => \&_assert_case,
+      on q{GOMP_STACKSIZE}         => \&_assert_case,
+      on q{GOMP_SPINCOUNT}         => \&_assert_case,
+      on q{GOMP_RTEMS_THREAD_POOLS} => \&_assert_case,
+      on q{OMP_TEAMS_THREAD_LIMIT} => \&_assert_case,
+      on q{OMP_ALLOCATOR}          => \&_assert_case,
+      on q{OMP_AFFINITY_FORMAT}    => \&_assert_case,
+      on q{OMP_DISPLAY_AFFINITY}   => \&_assert_case;
+}
 
 # used to assert valid environment, useful if variables are already set externally
 sub assert_omp_environment {
-    my $self = shift;
-  ENV:
-    foreach my $ev_ref ( $self->vars_set ) {
-        my $ev  = ( keys %$ev_ref )[0];
-        my $val = ( values %$ev_ref )[0];
-        $self->_get_set_assert( $ev, $val );
-    }
-    return 1;
+    return OpenMP::Environment::Validation::assert_environment( \%ENV );
 }
 
 sub _get_set_assert {
@@ -553,26 +637,7 @@ sub _get_set_assert {
 
 sub _assert_valid {
     my ( $self, $ev, $value ) = @_;
-    my $result = Validate::Tiny::validate( { $ev => $value }, $self->{_validation_rules} );
-
-    # process errors, then die
-    my $err;
-    foreach my $e ( keys %{ $result->{error} } ) {
-        my $msg = $result->{error}->{$e};
-        my $val = $result->{data}->{$e};
-        $err = qq{(fatal) $e="$val": $msg\n};
-    }
-    die qq{$err\n} if not $result->{success};
-
-    # if all is okay, return the filtered value (since we're testing what's been passed through 'filters' for some envars
-    return $result->{data}->{$ev};
-}
-
-# provides validator that does nothing, a null validator useful as a place holder
-sub _no_validate {
-    return sub {
-        return undef;
-    };
+    return OpenMP::Environment::Validation::validate_assignment( $ev, $value );
 }
 
 package OpenMP::Environment::_Lvalue;
@@ -717,7 +782,7 @@ OpenMP-enabled shared library is loaded.
 =head2 OpenMP 5.x examples
 
 C<OMP_NUM_THREADS> may be a comma-separated list for nested parallel levels.
-Version 1.3.0 accepts this standard form in addition to the single integer
+Version 1.5.0 accepts this standard form in addition to the single integer
 form accepted by earlier releases:
 
   $env->omp_num_threads = q{8,4,2};
@@ -731,9 +796,43 @@ And the OpenMP default allocator may be selected through C<OMP_ALLOCATOR>:
 
   $env->omp_allocator = q{omp_high_bw_mem_alloc};
 
-C<OMP_ALLOCATOR> and C<OMP_AFFINITY_FORMAT> are intentionally not validated
-by this module because their accepted grammars are substantially more complex
-than the scalar checks performed here.
+Ordinary assignment to C<OMP_ALLOCATOR> and C<OMP_AFFINITY_FORMAT> remains
+pass-through for backward compatibility with releases that did not validate
+those grammars.  The C<assert> DSL, C<assert_omp_environment>, and
+L<OpenMP::Environment::Validation> provide strict portable/libgomp grammar
+validation when requested.
+
+=head2 Assertion and unset DSL
+
+Because C<%ENV> is process-global, version 1.5.0 adds an opt-in functional DSL
+for operations that do not need object-local state:
+
+  use OpenMP::Environment qw/:dsl/;
+
+  my $env = OpenMP::Environment->new;
+  $env->omp_num_threads = 16;
+  $env->omp_schedule    = q{dynamic,4};
+
+  assert omp_num_threads;
+  assert omp_schedule;
+
+  unset omp_schedule;
+  unset omp_num_threads;
+
+The constants are imported only when requested.  Existing callers that simply
+say C<use OpenMP::Environment;> receive no new symbols.
+
+C<:unset> imports C<unset> plus all environment constants, C<:assert> imports
+C<assert> plus the constants, and C<:dsl> imports both functions plus the
+constants.  Individual symbols can also be requested explicitly:
+
+  use OpenMP::Environment qw/unset omp_target_offload/;
+
+  unset omp_target_offload;
+
+The constants live in L<OpenMP::Environment::Constants> so lower-case names
+such as C<omp_num_threads> do not collide with the accessor methods of the same
+name in this package.
 
 =head1 DESCRIPTION
 
@@ -747,7 +846,7 @@ libgomp documentation contains 25 canonical OpenMP/GOMP environment-variable
 names, and this release exposes all 25 while retaining the accessors and
 semantics from earlier C<OpenMP::Environment> releases.
 
-Version 1.3.0 adds support for:
+The current API supports:
 
 =over 4
 
@@ -790,43 +889,66 @@ host/canonical values, then start the OpenMP executable.
 
 =head1 VALIDATION
 
-Validation is intentionally conservative. Values are validated when the
-accepted grammar is simple and stable; complex OpenMP/libgomp syntaxes are
-passed through unchanged.
+Version 1.5.0 moves validation policy into
+L<OpenMP::Environment::Validation>.  That module documents the OpenMP 5.2 rule,
+the GCC 16.2/libgomp interpretation or extension, valid and invalid examples,
+and the implementation-defined areas for each supported variable.
 
-The following variables are validated:
+There are deliberately two validation modes so existing programs are not
+broken.
 
-  OMP_CANCELLATION
-  OMP_DISPLAY_AFFINITY
-  OMP_DISPLAY_ENV
-  OMP_DEFAULT_DEVICE
-  OMP_DYNAMIC
-  OMP_MAX_ACTIVE_LEVELS
-  OMP_MAX_TASK_PRIORITY
-  OMP_NESTED
-  OMP_NUM_TEAMS
-  OMP_NUM_THREADS
-  OMP_TARGET_OFFLOAD
-  OMP_TEAMS_THREAD_LIMIT
-  OMP_THREAD_LIMIT
-  OMP_WAIT_POLICY
-  GOMP_DEBUG
+=head2 Assignment compatibility
 
-The following are supported but not currently validated:
+Traditional setters and lvalue assignment retain the pre-1.5.0 validation
+contract.  Variables that were already validated continue to be validated and
+normalized.  Variables that historically accepted arbitrary strings continue
+to accept them on assignment:
 
-  OMP_ALLOCATOR
-  OMP_AFFINITY_FORMAT
-  OMP_PROC_BIND
-  OMP_PLACES
-  OMP_STACKSIZE
-  OMP_SCHEDULE
-  GOMP_CPU_AFFINITY
-  GOMP_STACKSIZE
-  GOMP_SPINCOUNT
-  GOMP_RTEMS_THREAD_POOLS
+  $env->gomp_spincount = q{legacy application value};
 
-C<assert_omp_environment> validates canonical supported variables already
-present in C<%ENV>. An environment with none of those variables set is valid.
+This preserves existing code and is especially important because earlier
+releases explicitly documented several complex grammars as pass-through.
+
+=head2 Strict assertion
+
+The new C<assert> DSL and the existing C<assert_omp_environment> method use the
+strict validation engine for all 25 canonical variables:
+
+  use OpenMP::Environment qw/:assert/;
+
+  $ENV{OMP_SCHEDULE} = q{nonmonotonic:dynamic,4};
+  assert omp_schedule;
+
+  $env->assert_omp_environment;
+
+Strict validation covers complex grammars including C<OMP_PROC_BIND>,
+C<OMP_PLACES>, C<OMP_SCHEDULE>, C<OMP_STACKSIZE>, C<OMP_ALLOCATOR>,
+C<OMP_AFFINITY_FORMAT>, and the GNU C<GOMP_*> extensions.
+
+It also detects portable cross-variable conditions that OpenMP explicitly
+classifies as implementation-defined.  In particular:
+
+  OMP_NESTED=FALSE
+  OMP_MAX_ACTIVE_LEVELS=4
+
+is reported as a conflict.  Non-conflicting relationships, such as
+C<OMP_PROC_BIND> taking precedence over C<GOMP_CPU_AFFINITY> in libgomp, are
+available through the machine-readable analysis API in
+L<OpenMP::Environment::Validation>.
+
+=head2 No system probing
+
+Validation is intentionally system-agnostic.  It does not inspect processors,
+NUMA topology, GPUs, target devices, allocator availability, runtime state,
+C</proc>, hwloc, compiler executables, or operating-system resources.  A value
+can therefore be syntactically valid while depending on runtime resources:
+
+  OMP_DEFAULT_DEVICE=7
+  OMP_PLACES={0,1,2,3}
+  OMP_STACKSIZE=64G
+
+See L<OpenMP::Environment::Validation> for the detailed human- and
+machine-readable validation reference.
 
 =head1 METHODS
 
@@ -856,8 +978,10 @@ Returns supported variables currently considered unset.
 
 =item C<assert_omp_environment>
 
-Validates supported canonical variables already set in C<%ENV>. Dies on the
-first validation failure encountered and returns true when validation succeeds.
+Strictly validates supported canonical variables already set in C<%ENV>,
+including the complex grammars introduced in the 1.5.0 validation module and
+portable cross-variable conflicts. Dies on the first validation failure or
+conflict and returns true when validation succeeds.
 
 =item C<print_omp_summary>
 
@@ -871,6 +995,33 @@ Prints supported canonical variables currently set.
 =item C<print_omp_summary_unset>
 
 Prints supported canonical variables currently unset.
+
+=back
+
+=head2 Functional DSL
+
+=over 4
+
+=item C<unset CONSTANT>
+
+  use OpenMP::Environment qw/:unset/;
+
+  $env->omp_target_offload = q{MANDATORY};
+  unset omp_target_offload;
+
+Deletes one supported environment variable through a static L<Dispatch::Fu>
+dispatch table and returns the previous value, matching Perl C<delete>
+semantics.  Unsupported names are rejected.
+
+=item C<assert CONSTANT>
+
+  use OpenMP::Environment qw/:assert/;
+
+  $ENV{OMP_SCHEDULE} = q{dynamic,4};
+  assert omp_schedule;
+
+Strictly validates the selected supported variable and any portable
+cross-variable conflict involving it.  An unset supported variable is valid.
 
 =back
 
@@ -913,7 +1064,7 @@ both forms: assigning or passing a false value unsets the environment variable.
 
 =item C<omp_allocator([$value])>
 
-Getter/setter for C<OMP_ALLOCATOR>. Not validated.
+Getter/setter for C<OMP_ALLOCATOR>. Assignment remains pass-through for backward compatibility; strict C<assert> validates allocator/memory-space/trait grammar.
 
 =item C<unset_omp_allocator>
 
@@ -921,7 +1072,7 @@ Deletes C<OMP_ALLOCATOR>.
 
 =item C<omp_affinity_format([$value])>
 
-Getter/setter for C<OMP_AFFINITY_FORMAT>. Not validated.
+Getter/setter for C<OMP_AFFINITY_FORMAT>. Assignment remains pass-through for backward compatibility; strict C<assert> validates affinity-format field syntax.
 
 =item C<unset_omp_affinity_format>
 
@@ -1018,7 +1169,7 @@ Deletes C<OMP_NUM_THREADS>.
 
 =item C<omp_proc_bind([$value])>
 
-Getter/setter for C<OMP_PROC_BIND>. Not validated.
+Getter/setter for C<OMP_PROC_BIND>. Assignment remains pass-through for backward compatibility; strict C<assert> validates OpenMP policies plus libgomp's deprecated C<MASTER> compatibility spelling.
 
 =item C<unset_omp_proc_bind>
 
@@ -1026,7 +1177,7 @@ Deletes C<OMP_PROC_BIND>.
 
 =item C<omp_places([$value])>
 
-Getter/setter for C<OMP_PLACES>. Not validated.
+Getter/setter for C<OMP_PLACES>. Assignment remains pass-through for backward compatibility; strict C<assert> validates grammar without probing processor topology.
 
 =item C<unset_omp_places>
 
@@ -1034,7 +1185,7 @@ Deletes C<OMP_PLACES>.
 
 =item C<omp_stacksize([$value])>
 
-Getter/setter for C<OMP_STACKSIZE>. Not validated.
+Getter/setter for C<OMP_STACKSIZE>. Assignment remains pass-through for backward compatibility; strict C<assert> validates positive size/unit syntax without checking memory availability.
 
 =item C<unset_omp_stacksize>
 
@@ -1042,8 +1193,7 @@ Deletes C<OMP_STACKSIZE>.
 
 =item C<omp_schedule([$value])>
 
-Getter/setter for C<OMP_SCHEDULE>. Not validated. libgomp accepts schedule
-specifications such as C<static>, C<dynamic,8>, C<guided,4>, and C<auto>.
+Getter/setter for C<OMP_SCHEDULE>. Assignment remains pass-through for backward compatibility; strict C<assert> validates the OpenMP 5.2 C<[modifier:]kind[,chunk]> grammar.
 
 =item C<unset_omp_schedule>
 
@@ -1085,7 +1235,7 @@ Deletes C<OMP_WAIT_POLICY>.
 
 =item C<gomp_cpu_affinity([$value])>
 
-Getter/setter for GNU C<GOMP_CPU_AFFINITY>. Not validated.
+Getter/setter for GNU C<GOMP_CPU_AFFINITY>. Assignment remains pass-through for backward compatibility; strict C<assert> validates GNU CPU/range/stride syntax without checking host CPUs.
 
 =item C<unset_gomp_cpu_affinity>
 
@@ -1102,7 +1252,9 @@ Deletes C<GOMP_DEBUG>.
 =item C<gomp_stacksize([$value])>
 
 Getter/setter for GNU C<GOMP_STACKSIZE>, which controls the default worker
-thread stack size in kilobytes. Not validated.
+thread stack size in kilobytes. Assignment remains pass-through; strict
+C<assert> validates GNU numeric syntax plus the historical unit-suffix
+compatibility accepted by this module.
 
 =item C<unset_gomp_stacksize>
 
@@ -1111,8 +1263,9 @@ Deletes C<GOMP_STACKSIZE>.
 =item C<gomp_spincount([$value])>
 
 Getter/setter for GNU C<GOMP_SPINCOUNT>, which controls active busy-waiting
-before passive waiting. libgomp accepts an integer, optionally with magnitude
-suffixes, or C<INFINITE>/C<INFINITY>. Not validated.
+before passive waiting. Assignment remains pass-through for backward
+compatibility; strict C<assert> accepts an integer with documented magnitude
+suffixes or C<INFINITE>/C<INFINITY>.
 
 =item C<unset_gomp_spincount>
 
@@ -1120,8 +1273,10 @@ Deletes C<GOMP_SPINCOUNT>.
 
 =item C<gomp_rtems_thread_pools([$value])>
 
-Getter/setter for GNU C<GOMP_RTEMS_THREAD_POOLS>, used only on RTEMS. Not
-validated.
+Getter/setter for GNU C<GOMP_RTEMS_THREAD_POOLS>, used only on RTEMS.
+Assignment remains pass-through for backward compatibility; strict C<assert>
+validates the GNU C<count[$priority]@scheduler> list grammar without probing
+RTEMS.
 
 =item C<unset_gomp_rtems_thread_pools>
 
@@ -1188,20 +1343,23 @@ when wrapping existing OpenMP-enabled applications.
 
 =head1 BACKWARD COMPATIBILITY
 
-Version 1.3.0 is intended as an additive update. Existing accessor names remain
+Version 1.5.0 remains an additive update. Existing accessor names remain
 unchanged. Existing false/unset behavior for C<OMP_DYNAMIC> and C<OMP_NESTED>
 is preserved. Their no-argument calls now behave as non-destructive getters,
 consistent with every other accessor. Existing canonical variable ordering
 returned by C<vars> is preserved, with the three newly supported GCC 16.2
 variables appended.
 
-The only validation broadening is for C<OMP_NUM_THREADS>: every value accepted
-by previous releases remains accepted, while standard comma-separated nested
-thread-count lists are now accepted as well.
+Every assignment accepted by previous releases remains accepted.  The strict
+1.5.0 validation rules for historically pass-through variables are opt-in via
+C<assert>, C<assert_omp_environment>, or L<OpenMP::Environment::Validation>.
+Thus validation can be substantially more informative without changing setter
+or lvalue compatibility.
 
 =head1 SEE ALSO
 
-L<OpenMP::Simple>, L<Inline::C>, and the GCC libgomp manual:
+L<OpenMP::Environment::Constants>, L<OpenMP::Environment::Validation>,
+L<Dispatch::Fu>, L<OpenMP::Simple>, L<Inline::C>, and the GCC libgomp manual:
 
 L<https://gcc.gnu.org/onlinedocs/gcc-16.2.0/libgomp/>
 
@@ -1221,5 +1379,5 @@ Inline::C, shared-library load-time, and OpenMP-runtime behavior discussions.
 
 Same as Perl.
 
-=for Pod::Coverage _assert_valid _get_set_assert _lvalue_for _is_ge_if_set _is_positive_integer_list_if_set _no_validate _omp_summary _omp_summary_set _omp_summary_unset TIESCALAR FETCH STORE
+=for Pod::Coverage _assert_valid _get_set_assert _lvalue_for _is_ge_if_set _is_positive_integer_list_if_set _no_validate _omp_summary _omp_summary_set _omp_summary_unset _unset_case _assert_case import unset assert TIESCALAR FETCH STORE
 

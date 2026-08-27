@@ -85,3 +85,12 @@ Revision history for Perl extension OpenMP::Environment.
 	 - update documentation and added an lvalue test
 	 - all existing tests passed unchanged
 
+
+1.5.0 Thu Aug 27 2026
+         - added opt-in assert/unset DSL shortcuts and environment constants using Dispatch::Fu
+         - moved validation policy into OpenMP::Environment::Validation with detailed OpenMP 5.2 and GCC 16.2/libgomp references
+         - added strict portable validation for complex OpenMP/GOMP grammars and portable cross-variable conflicts without system probing
+         - preserved all traditional getter/setter, lvalue, unsetter, and historical assignment behavior for backward compatibility
+         - updated POD with DSL, external executable, OpenMP::Simple, validation, implementation-defined, and GNU-specific guidance
+         - added tests for constants, dispatch, strict assertions, validation grammar, cross-variable rules, compatibility, and new-module POD
+
