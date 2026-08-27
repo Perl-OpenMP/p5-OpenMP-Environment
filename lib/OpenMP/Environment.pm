@@ -39,7 +39,13 @@ sub import {
             $export{assert} = 1;
             $export{$_} = 1 for keys %constant;
         }
-        elsif ( $item eq q{unset} or $item eq q{assert} or $constant{$item} ) {
+        elsif ( $item eq q{unset} ) {
+            $export{unset} = 1;
+        }
+        elsif ( $item eq q{assert} ) {
+            $export{assert} = 1;
+        }
+        elsif ( $constant{$item} ) {
             $export{$item} = 1;
         }
         else {
@@ -73,7 +79,9 @@ sub _is_ge_if_set {
     my ( $min, $value ) = @_;
     return if not defined $value;
     return q{Value must be an integer great than or equal to 1}
-      if $value =~ m/\D/ or $value < $min;
+      if $value =~ m/\D/;
+    return q{Value must be an integer great than or equal to 1}
+      if $value < $min;
     return;
 }
 
@@ -86,6 +94,14 @@ sub _is_positive_integer_list_if_set {
 
 sub _no_validate {
     return sub { return undef };
+}
+
+sub _is_legacy_false_value {
+    my ($value) = @_;
+    return 1 if not $value;
+    return 1 if $value eq q{false};
+    return 1 if $value eq q{FALSE};
+    return 0;
 }
 
 # returns a list of variables supported (no values)
@@ -273,7 +289,7 @@ sub omp_dynamic :lvalue {
     if (@_) {
         my $value = shift;
         my $old = $ENV{$ev};
-        if ( not $value or $value eq q{false} or $value eq q{FALSE} ) {
+        if ( _is_legacy_false_value($value) ) {
             $self->unset_omp_dynamic();
             $has_override = 1;
             $override = $old;
@@ -326,7 +342,7 @@ sub omp_nested :lvalue {
     if (@_) {
         my $value = shift;
         my $old = $ENV{$ev};
-        if ( not $value or $value eq q{false} or $value eq q{FALSE} ) {
+        if ( _is_legacy_false_value($value) ) {
             $self->unset_omp_nested();
             $has_override = 1;
             $override = $old;

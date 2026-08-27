@@ -64,7 +64,8 @@ sub validate_value {
       if not OpenMP::Environment::Constants::is_environment_name($name);
     return undef if not defined $value;
 
-    my $normalized = $UPPERCASE_FILTER{$name} ? uc($value) : $value;
+    my $normalized = $value;
+    $normalized = uc($value) if $UPPERCASE_FILTER{$name};
     my $validator = $VALIDATOR{$name};
     my $error = $validator->($normalized);
     die qq{(fatal) $name="$value": $error\n\n} if defined $error;
@@ -92,8 +93,10 @@ sub assert_variable {
     croak qq{Unsupported OpenMP/libgomp environment variable "$name"}
       if not OpenMP::Environment::Constants::is_environment_name($name);
 
-    if ( exists $env->{$name} and defined $env->{$name} ) {
-        $env->{$name} = validate_value( $name, $env->{$name} );
+    if ( exists $env->{$name} ) {
+        if ( defined $env->{$name} ) {
+            $env->{$name} = validate_value( $name, $env->{$name} );
+        }
     }
 
     my $analysis = analyze_environment($env);
@@ -135,15 +138,18 @@ sub analyze_environment {
     }
 
     my @conflicts;
-    if ( _is_false( $env->{OMP_NESTED} )
-        and defined $env->{OMP_MAX_ACTIVE_LEVELS}
-        and $env->{OMP_MAX_ACTIVE_LEVELS} =~ m/\A\d+\z/
-        and $env->{OMP_MAX_ACTIVE_LEVELS} > 1 ) {
-        push @conflicts, {
-            variables => [qw/OMP_NESTED OMP_MAX_ACTIVE_LEVELS/],
-            class     => q{implementation-defined},
-            message   => q{OMP_NESTED=FALSE with OMP_MAX_ACTIVE_LEVELS greater than 1 is implementation-defined by OpenMP 5.2},
-        };
+    if ( _is_false( $env->{OMP_NESTED} ) ) {
+        if ( defined $env->{OMP_MAX_ACTIVE_LEVELS} ) {
+            if ( $env->{OMP_MAX_ACTIVE_LEVELS} =~ m/\A\d+\z/ ) {
+                if ( $env->{OMP_MAX_ACTIVE_LEVELS} > 1 ) {
+                    push @conflicts, {
+                        variables => [qw/OMP_NESTED OMP_MAX_ACTIVE_LEVELS/],
+                        class     => q{implementation-defined},
+                        message   => q{OMP_NESTED=FALSE with OMP_MAX_ACTIVE_LEVELS greater than 1 is implementation-defined by OpenMP 5.2},
+                    };
+                }
+            }
+        }
     }
 
     my @runtime_dependent;
@@ -158,19 +164,35 @@ sub analyze_environment {
     _runtime_note( \@runtime_dependent, $env, q{GOMP_RTEMS_THREAD_POOLS}, q{RTEMS scheduler names and priorities are syntax-checked but not queried from RTEMS} );
 
     my @notes;
-    if ( exists $env->{GOMP_CPU_AFFINITY} and exists $env->{OMP_PROC_BIND} ) {
-        push @notes, q{OMP_PROC_BIND takes precedence over GOMP_CPU_AFFINITY in GNU libgomp when both are set};
+    if ( exists $env->{GOMP_CPU_AFFINITY} ) {
+        if ( exists $env->{OMP_PROC_BIND} ) {
+            push @notes, q{OMP_PROC_BIND takes precedence over GOMP_CPU_AFFINITY in GNU libgomp when both are set};
+        }
     }
-    if ( exists $env->{OMP_NESTED} and exists $env->{OMP_MAX_ACTIVE_LEVELS}
-        and not ( _is_false( $env->{OMP_NESTED} ) and $env->{OMP_MAX_ACTIVE_LEVELS} =~ m/\A\d+\z/ and $env->{OMP_MAX_ACTIVE_LEVELS} > 1 ) ) {
-        push @notes, q{when OMP_NESTED and OMP_MAX_ACTIVE_LEVELS are both set without the conflicting FALSE/>1 combination, OMP_NESTED has no effect};
+    if ( exists $env->{OMP_NESTED} ) {
+        if ( exists $env->{OMP_MAX_ACTIVE_LEVELS} ) {
+            my $conflicting = 0;
+            if ( _is_false( $env->{OMP_NESTED} ) ) {
+                if ( $env->{OMP_MAX_ACTIVE_LEVELS} =~ m/\A\d+\z/ ) {
+                    $conflicting = 1 if $env->{OMP_MAX_ACTIVE_LEVELS} > 1;
+                }
+            }
+            push @notes, q{when OMP_NESTED and OMP_MAX_ACTIVE_LEVELS are both set without the conflicting FALSE/>1 combination, OMP_NESTED has no effect}
+              if not $conflicting;
+        }
     }
-    if ( _has_multiple_items( $env->{OMP_NUM_THREADS} ) or _has_proc_bind_list( $env->{OMP_PROC_BIND} ) ) {
+    if ( _has_multiple_items( $env->{OMP_NUM_THREADS} ) ) {
+        push @notes, q{multi-item OMP_NUM_THREADS or OMP_PROC_BIND values participate in initialization of max-active-levels-var unless overridden by stronger nesting controls};
+    }
+    elsif ( _has_proc_bind_list( $env->{OMP_PROC_BIND} ) ) {
         push @notes, q{multi-item OMP_NUM_THREADS or OMP_PROC_BIND values participate in initialization of max-active-levels-var unless overridden by stronger nesting controls};
     }
 
+    my $valid = 1;
+    $valid = 0 if @errors;
+    $valid = 0 if @conflicts;
     return {
-        valid             => ( @errors or @conflicts ) ? 0 : 1,
+        valid             => $valid,
         errors            => \@errors,
         conflicts         => \@conflicts,
         runtime_dependent => \@runtime_dependent,
@@ -188,24 +210,29 @@ sub _runtime_note {
 sub _is_false {
     my ($value) = @_;
     return 0 if not defined $value;
-    return $value =~ m/\A(?:0|false)\z/i ? 1 : 0;
+    return 1 if $value =~ m/\A(?:0|false)\z/i;
+    return 0;
 }
 
 sub _has_multiple_items {
     my ($value) = @_;
-    return defined $value && $value =~ /,/ ? 1 : 0;
+    return 0 if not defined $value;
+    return 1 if $value =~ /,/;
+    return 0;
 }
 
 sub _has_proc_bind_list {
     my ($value) = @_;
     return 0 if not defined $value;
-    return $value =~ /,/ ? 1 : 0;
+    return 1 if $value =~ /,/;
+    return 0;
 }
 
 sub _enum {
     my ( $value, @allowed ) = @_;
     my %allowed = map { uc($_) => 1 } @allowed;
-    return $allowed{ uc $value } ? undef : q{Expected one of: } . join( q{, }, @allowed );
+    return undef if $allowed{ uc $value };
+    return q{Expected one of: } . join( q{, }, @allowed );
 }
 
 sub _integer_at_least {
@@ -448,7 +475,9 @@ sub _validate_omp_allocator {
 
     my ( $memspace, $traits ) = $text =~ m/\A([^:]+):(.*)\z/;
     return q{Expected a predefined OpenMP allocator or memory space, optionally followed by allocator traits}
-      if not defined $memspace or not $space{$memspace};
+      if not defined $memspace;
+    return q{Expected a predefined OpenMP allocator or memory space, optionally followed by allocator traits}
+      if not $space{$memspace};
     return q{Allocator trait list must not be empty} if not length _trim($traits);
 
     my %seen;
@@ -466,8 +495,10 @@ sub _validate_omp_allocator {
     if ( defined $parsed{fb_data} ) {
         return q{fb_data is permitted by OpenMP but unsupported by GNU libgomp in OMP_ALLOCATOR};
     }
-    if ( defined $parsed{fallback} and lc($parsed{fallback}) eq q{allocator_fb} ) {
-        return q{fallback=allocator_fb cannot be completed in GNU libgomp OMP_ALLOCATOR because fb_data is unsupported};
+    if ( defined $parsed{fallback} ) {
+        if ( lc($parsed{fallback}) eq q{allocator_fb} ) {
+            return q{fallback=allocator_fb cannot be completed in GNU libgomp OMP_ALLOCATOR because fb_data is unsupported};
+        }
     }
     return;
 }
@@ -519,7 +550,9 @@ sub _validate_allocator_trait {
     }
     if ( $name eq q{alignment} ) {
         return q{alignment must be a positive power of two}
-          if $value !~ m/\A[1-9]\d*\z/ or ( $value & ( $value - 1 ) ) != 0;
+          if $value !~ m/\A[1-9]\d*\z/;
+        return q{alignment must be a positive power of two}
+          if ( $value & ( $value - 1 ) ) != 0;
         return;
     }
     if ( $name eq q{access} ) {
@@ -532,7 +565,8 @@ sub _validate_allocator_trait {
         return _enum( $value, qw/default_mem_fb null_fb abort_fb allocator_fb/ );
     }
     if ( $name eq q{fb_data} ) {
-        return $allocators->{$value} ? undef : q{fb_data must name a predefined allocator};
+        return undef if $allocators->{$value};
+        return q{fb_data must name a predefined allocator};
     }
     if ( $name eq q{pinned} ) {
         return _enum( $value, qw/true false/ );
@@ -560,15 +594,21 @@ sub _split_top_level {
         $brace-- if $char eq q[}];
         $paren++ if $char eq q{(};
         $paren-- if $char eq q{)};
-        return () if $brace < 0 or $paren < 0;
-        if ( $char eq $separator and not $brace and not $paren ) {
-            push @parts, _trim($part);
-            $part = q{};
-            next;
+        return () if $brace < 0;
+        return () if $paren < 0;
+        if ( $char eq $separator ) {
+            if ( not $brace ) {
+                if ( not $paren ) {
+                    push @parts, _trim($part);
+                    $part = q{};
+                    next;
+                }
+            }
         }
         $part .= $char;
     }
-    return () if $brace or $paren;
+    return () if $brace;
+    return () if $paren;
     push @parts, _trim($part);
     return () if grep { $_ eq q{} } @parts;
     return @parts;
@@ -624,7 +664,6 @@ sub _matching_brace {
         if ( $char eq q[}] ) {
             $depth--;
             return $i if $depth == 0;
-            return -1 if $depth < 0;
         }
     }
     return -1;
