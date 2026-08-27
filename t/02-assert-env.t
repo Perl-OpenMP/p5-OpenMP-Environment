@@ -19,6 +19,7 @@ local %ENV = %ENV;
 # they are, however, validated
 sub set_valid {
     $ENV{OMP_CANCELLATION}      = q{TRUE};
+    $ENV{OMP_DISPLAY_AFFINITY}  = q{TRUE};
     $ENV{OMP_DISPLAY_ENV}       = q{TRUE};
     $ENV{OMP_TARGET_OFFLOAD}    = q{MANDATORY};
     $ENV{OMP_DYNAMIC}           = q{true};
@@ -45,6 +46,8 @@ note qq{Setting up non-validated variables via %ENV ...\n\n};
 
 # the following are technically valid, but not guarenteed to be self-consistent;
 # nor are these validated directly
+$ENV{OMP_ALLOCATOR}           = q{omp_high_bw_mem_alloc};
+$ENV{OMP_AFFINITY_FORMAT}     = q{thread %n affinity %A};
 $ENV{OMP_PROC_BIND}           = q{MASTER,CLOSE,SPREAD};
 $ENV{OMP_PLACES}              = q/{0,1,2}, {3,4,6}, {7,8,9}, {10,11,12}/;
 $ENV{OMP_STACKSIZE}           = 1024;
@@ -60,6 +63,10 @@ note q{Now testing assert_omp_environment for each validated variable};
 
 $ENV{OMP_CANCELLATION} = q{xxx};
 dies_ok( sub { $env->assert_omp_environment }, q{Fails as expectedly when OMP_CANCELLATION is invalid} );
+
+set_valid();
+$ENV{OMP_DISPLAY_AFFINITY} = q{yyy};
+dies_ok( sub { $env->assert_omp_environment }, q{Fails as expectedly when OMP_DISPLAY_AFFINITY is invalid} );
 
 set_valid();
 $ENV{OMP_DISPLAY_ENV} = q{yyy};
@@ -96,7 +103,10 @@ $ENV{OMP_NESTED} = q{yyy};
 dies_ok( sub { $env->assert_omp_environment }, q{Fails as expectedly when OMP_NESTED is invalid} );
 
 set_valid();
+$ENV{OMP_NUM_THREADS} = q{16,8,4};
+ok $env->assert_omp_environment, q{Nested-level OMP_NUM_THREADS list validates when supplied externally};
 
+set_valid();
 $ENV{OMP_NUM_THREADS} = q{figgy};
 dies_ok( sub { $env->assert_omp_environment }, q{Fails as expectedly when OMP_NUM_THREADS is invalid} );
 
@@ -129,3 +139,4 @@ done_testing;
 
 exit;
 __END__
+

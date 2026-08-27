@@ -26,6 +26,17 @@ is $env->omp_cancellation,           undef,    q{OMP_CANCELLATION has indeed bee
 ok !exists( $ENV{OMP_CANCELLATION} ), q/$ENV{OMP_CANCELLATION} doesn't exist, as expected/;
 dies_ok( sub { $env->omp_cancellation(q{Invalid value xxx}) }, q{omp_cancellation dies on invalid input} );
 
+# OMP_DISPLAY_AFFINITY
+note q{## OMP_DISPLAY_AFFINITY's valid values are: 'TRUE', 'FALSE', and may be unset};
+is $env->omp_display_affinity(q{TRUE}),  q{TRUE},  q{OMP_DISPLAY_AFFINITY can be set to 'TRUE'};
+is $env->omp_display_affinity(q{true}),  q{TRUE},  q{OMP_DISPLAY_AFFINITY upper-cases 'true'};
+is $env->unset_omp_display_affinity(),   q{TRUE},  q{unset_omp_display_affinity returns last known value};
+is $env->omp_display_affinity(q{FALSE}), q{FALSE}, q{OMP_DISPLAY_AFFINITY can be set to 'FALSE'};
+is $env->omp_display_affinity(q{false}), q{FALSE}, q{OMP_DISPLAY_AFFINITY upper-cases 'false'};
+is $env->unset_omp_display_affinity(),   q{FALSE}, q{unset_omp_display_affinity returns last known value};
+is $env->omp_display_affinity,           undef,    q{OMP_DISPLAY_AFFINITY has been unset};
+dies_ok( sub { $env->omp_display_affinity(q{sometimes}) }, q{omp_display_affinity dies on invalid input} );
+
 # OMP_DYNAMIC
 note q{## OMP_DYNAMIC's valid values are: 'true', 1, 'false', 0, and may be unset};
 is $env->omp_dynamic(q{true}),  q{true}, q{OMP_DYNAMIC can be set to 'true' via 'true' };
@@ -165,6 +176,13 @@ dies_ok( sub { $env->omp_num_threads(0) },      q{omp_num_threads dies on invali
 dies_ok( sub { $env->omp_num_threads(-1) },     q{omp_num_threads dies on invalid input (-1)} );
 dies_ok( sub { $env->omp_num_threads(-2) },     q{omp_num_threads dies on invalid input (-2)} );
 dies_ok( sub { $env->omp_num_threads(q{foo}) }, q{omp_num_threads dies on invalid input ('foo')} );
+is $env->omp_num_threads(q{8,4,2}), q{8,4,2}, q{OMP_NUM_THREADS accepts a nested-level list};
+is $env->unset_omp_num_threads(), q{8,4,2}, q{nested-level OMP_NUM_THREADS list can be unset};
+is $env->omp_num_threads(q{8, 4, 2}), q{8, 4, 2}, q{OMP_NUM_THREADS accepts whitespace around list separators};
+is $env->unset_omp_num_threads(), q{8, 4, 2}, q{whitespace-preserving OMP_NUM_THREADS list can be unset};
+dies_ok( sub { $env->omp_num_threads(q{8,0,2}) }, q{omp_num_threads rejects zero in a nested-level list} );
+dies_ok( sub { $env->omp_num_threads(q{8,,2}) }, q{omp_num_threads rejects an empty nested-level list item} );
+dies_ok( sub { $env->omp_num_threads(q{8,foo,2}) }, q{omp_num_threads rejects a non-integer nested-level list item} );
 
 # OMP_NUM_TEAMS
 note q{## OMP_NUM_TEAMS's valid values are integers 0 or greater (>= 1)};
@@ -207,6 +225,16 @@ dies_ok( sub { $env->omp_teams_thread_limit(q{foo}) }, q{omp_teams_thread_limit 
 
 ## not validated, but test set/unset
 ## no convenient 'uc' filters, either
+# OMP_ALLOCATOR
+ok $env->omp_allocator(q{omp_high_bw_mem_alloc}), q{omp_allocator sets a predefined allocator};
+is $env->unset_omp_allocator(), q{omp_high_bw_mem_alloc}, q{unset_omp_allocator returns last known value};
+ok $env->omp_allocator(q{omp_low_lat_mem_space:pinned=true,partition=nearest}), q{omp_allocator passes complex allocator syntax through};
+is $env->unset_omp_allocator(), q{omp_low_lat_mem_space:pinned=true,partition=nearest}, q{complex OMP_ALLOCATOR value can be unset};
+
+# OMP_AFFINITY_FORMAT
+ok $env->omp_affinity_format(q{thread %n affinity %A}), q{omp_affinity_format sets an affinity display format};
+is $env->unset_omp_affinity_format(), q{thread %n affinity %A}, q{unset_omp_affinity_format returns last known value};
+
 # OMP_PROC_BIND
 ok $env->omp_proc_bind(q{TRUE}), q{omp_proc_bind sets arbitrary value ok, no validation (yet)};
 is $env->unset_omp_proc_bind(), q{TRUE}, q{unset_omp_proc_bind returns last known value if OMP_PROC_BIND is set};
@@ -253,3 +281,4 @@ done_testing;
 
 exit;
 __END__
+

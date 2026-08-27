@@ -67,3 +67,15 @@ Revision history for Perl extension OpenMP::Environment.
 1.2.3 Tue Jul 17 11:33:00 2024
          - updated POD to reflect the recommended use of this module with OpenMP::Simple
          - updated examples
+
+1.3.0 Thu Aug 27 2026
+         - updated support through OpenMP 5.2 as implemented by GCC 16.2.0/libgomp
+         - added support for OMP_ALLOCATOR, OMP_AFFINITY_FORMAT, and OMP_DISPLAY_AFFINITY
+         - added support for comma-separated OMP_NUM_THREADS lists for nested parallelism
+         - corrected no-argument omp_dynamic() and omp_nested() calls to act as getters
+         - preserved existing API and environment-variable behavior for backward compatibility
+         - expanded tests for validation, accessors, unsetters, environment handling, and compatibility
+         - updated POD with current OpenMP/libgomp environment-variable support
+         - added POD examples for running external OpenMP-enabled executables
+         - expanded POD examples and guidance for use with OpenMP::Simple
+         - corrected and updated existing POD examples
