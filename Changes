@@ -79,3 +79,9 @@ Revision history for Perl extension OpenMP::Environment.
          - added POD examples for running external OpenMP-enabled executables
          - expanded POD examples and guidance for use with OpenMP::Simple
          - corrected and updated existing POD examples
+
+1.4.0 Thu Aug 27 2026
+	 - added lvalue support
+	 - update documentation and added an lvalue test
+	 - all existing tests passed unchanged
+

@@ -4,7 +4,7 @@ use warnings;
 
 use Validate::Tiny qw/filter is_in/;
 
-our $VERSION = q{1.3.0};
+our $VERSION = q{1.4.0};
 
 our @_OMP_VARS = (
     qw/OMP_CANCELLATION OMP_DISPLAY_ENV OMP_DEFAULT_DEVICE OMP_NUM_TEAMS
@@ -161,12 +161,25 @@ sub _omp_summary {
     return $ret;
 }
 
+# Return a validation-aware lvalue proxy for one environment variable.
+# FETCH reads the current value from %ENV; STORE routes assignment back through
+# the public accessor so lvalue syntax retains the same validation, filtering,
+# and compatibility behavior as traditional setter calls.
+sub _lvalue_for :lvalue {
+    my ( $self, $ev, $accessor, $has_override, $override ) = @_;
+    my $slot;
+    tie $slot, q{OpenMP::Environment::_Lvalue},
+      $self, $ev, $accessor, $has_override, $override;
+    $slot;
+}
+
 # OpenMP Environmental Variable setters/getters
 
-sub omp_allocator {
+sub omp_allocator :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_ALLOCATOR};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_allocator} );
 }
 
 sub unset_omp_allocator {
@@ -175,10 +188,11 @@ sub unset_omp_allocator {
     return delete $ENV{$ev};
 }
 
-sub omp_affinity_format {
+sub omp_affinity_format :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_AFFINITY_FORMAT};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_affinity_format} );
 }
 
 sub unset_omp_affinity_format {
@@ -187,10 +201,11 @@ sub unset_omp_affinity_format {
     return delete $ENV{$ev};
 }
 
-sub omp_display_affinity {
+sub omp_display_affinity :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_DISPLAY_AFFINITY};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_display_affinity} );
 }
 
 sub unset_omp_display_affinity {
@@ -199,10 +214,11 @@ sub unset_omp_display_affinity {
     return delete $ENV{$ev};
 }
 
-sub omp_cancellation {
+sub omp_cancellation :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_CANCELLATION};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_cancellation} );
 }
 
 sub unset_omp_cancellation {
@@ -211,10 +227,11 @@ sub unset_omp_cancellation {
     return delete $ENV{$ev};
 }
 
-sub omp_display_env {
+sub omp_display_env :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_DISPLAY_ENV};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_display_env} );
 }
 
 sub unset_omp_display_env {
@@ -223,10 +240,11 @@ sub unset_omp_display_env {
     return delete $ENV{$ev};
 }
 
-sub omp_default_device {
+sub omp_default_device :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_DEFAULT_DEVICE};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_default_device} );
 }
 
 sub unset_omp_default_device {
@@ -235,18 +253,25 @@ sub unset_omp_default_device {
     return delete $ENV{$ev};
 }
 
-sub omp_dynamic {
-    my ( $self, $value ) = @_;
+sub omp_dynamic :lvalue {
+    my $self = shift;
     my $ev = q{OMP_DYNAMIC};
-    my $old = $ENV{OMP_DYNAMIC};
-    return $old if @_ == 1;
-    if (not $value or $value eq q{false} or $value eq q{FALSE}) {
-     $self->unset_omp_dynamic();
-     return $old;
+    my ( $has_override, $override );
+
+    if (@_) {
+        my $value = shift;
+        my $old = $ENV{$ev};
+        if ( not $value or $value eq q{false} or $value eq q{FALSE} ) {
+            $self->unset_omp_dynamic();
+            $has_override = 1;
+            $override = $old;
+        }
+        else {
+            $self->_get_set_assert( $ev, $value );
+        }
     }
-    else {
-      return $self->_get_set_assert( $ev, $value );
-    }
+
+    $self->_lvalue_for( $ev, q{omp_dynamic}, $has_override, $override );
 }
 
 sub unset_omp_dynamic {
@@ -255,10 +280,11 @@ sub unset_omp_dynamic {
     return delete $ENV{$ev};
 }
 
-sub omp_max_active_levels {
+sub omp_max_active_levels :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_MAX_ACTIVE_LEVELS};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_max_active_levels} );
 }
 
 sub unset_omp_max_active_levels {
@@ -267,10 +293,11 @@ sub unset_omp_max_active_levels {
     return delete $ENV{$ev};
 }
 
-sub omp_max_task_priority {
+sub omp_max_task_priority :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_MAX_TASK_PRIORITY};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_max_task_priority} );
 }
 
 sub unset_omp_max_task_priority {
@@ -279,18 +306,25 @@ sub unset_omp_max_task_priority {
     return delete $ENV{$ev};
 }
 
-sub omp_nested {
-    my ( $self, $value ) = @_;
+sub omp_nested :lvalue {
+    my $self = shift;
     my $ev = q{OMP_NESTED};
-    my $old = $ENV{OMP_NESTED};
-    return $old if @_ == 1;
-    if (not $value or $value eq q{false} or $value eq q{FALSE}) {
-     $self->unset_omp_nested();
-     return $old;
+    my ( $has_override, $override );
+
+    if (@_) {
+        my $value = shift;
+        my $old = $ENV{$ev};
+        if ( not $value or $value eq q{false} or $value eq q{FALSE} ) {
+            $self->unset_omp_nested();
+            $has_override = 1;
+            $override = $old;
+        }
+        else {
+            $self->_get_set_assert( $ev, $value );
+        }
     }
-    else {
-      return $self->_get_set_assert( $ev, $value );
-    }
+
+    $self->_lvalue_for( $ev, q{omp_nested}, $has_override, $override );
 }
 
 sub unset_omp_nested {
@@ -299,10 +333,11 @@ sub unset_omp_nested {
     return delete $ENV{$ev};
 }
 
-sub omp_num_threads {
+sub omp_num_threads :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_NUM_THREADS};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_num_threads} );
 }
 
 sub unset_omp_num_threads {
@@ -311,10 +346,11 @@ sub unset_omp_num_threads {
     return delete $ENV{$ev};
 }
 
-sub omp_num_teams {
+sub omp_num_teams :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_NUM_TEAMS};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_num_teams} );
 }
 
 sub unset_omp_num_teams {
@@ -323,10 +359,11 @@ sub unset_omp_num_teams {
     return delete $ENV{$ev};
 }
 
-sub omp_proc_bind {
+sub omp_proc_bind :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_PROC_BIND};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_proc_bind} );
 }
 
 sub unset_omp_proc_bind {
@@ -335,10 +372,11 @@ sub unset_omp_proc_bind {
     return delete $ENV{$ev};
 }
 
-sub omp_places {
+sub omp_places :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_PLACES};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_places} );
 }
 
 sub unset_omp_places {
@@ -347,10 +385,11 @@ sub unset_omp_places {
     return delete $ENV{$ev};
 }
 
-sub omp_stacksize {
+sub omp_stacksize :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_STACKSIZE};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_stacksize} );
 }
 
 sub unset_omp_stacksize {
@@ -359,10 +398,11 @@ sub unset_omp_stacksize {
     return delete $ENV{$ev};
 }
 
-sub omp_schedule {
+sub omp_schedule :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_SCHEDULE};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_schedule} );
 }
 
 sub unset_omp_schedule {
@@ -371,10 +411,11 @@ sub unset_omp_schedule {
     return delete $ENV{$ev};
 }
 
-sub omp_target_offload {
+sub omp_target_offload :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_TARGET_OFFLOAD};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_target_offload} );
 }
 
 sub unset_omp_target_offload {
@@ -383,10 +424,11 @@ sub unset_omp_target_offload {
     return delete $ENV{$ev};
 }
 
-sub omp_thread_limit {
+sub omp_thread_limit :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_THREAD_LIMIT};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_thread_limit} );
 }
 
 sub unset_omp_thread_limit {
@@ -395,10 +437,11 @@ sub unset_omp_thread_limit {
     return delete $ENV{$ev};
 }
 
-sub omp_teams_thread_limit {
+sub omp_teams_thread_limit :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_TEAMS_THREAD_LIMIT};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_teams_thread_limit} );
 }
 
 sub unset_omp_teams_thread_limit {
@@ -407,10 +450,11 @@ sub unset_omp_teams_thread_limit {
     return delete $ENV{$ev};
 }
 
-sub omp_wait_policy {
+sub omp_wait_policy :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{OMP_WAIT_POLICY};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{omp_wait_policy} );
 }
 
 sub unset_omp_wait_policy {
@@ -419,10 +463,11 @@ sub unset_omp_wait_policy {
     return delete $ENV{$ev};
 }
 
-sub gomp_cpu_affinity {
+sub gomp_cpu_affinity :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{GOMP_CPU_AFFINITY};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{gomp_cpu_affinity} );
 }
 
 sub unset_gomp_cpu_affinity {
@@ -431,10 +476,11 @@ sub unset_gomp_cpu_affinity {
     return delete $ENV{$ev};
 }
 
-sub gomp_debug {
+sub gomp_debug :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{GOMP_DEBUG};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{gomp_debug} );
 }
 
 sub unset_gomp_debug {
@@ -443,10 +489,11 @@ sub unset_gomp_debug {
     return delete $ENV{$ev};
 }
 
-sub gomp_stacksize {
+sub gomp_stacksize :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{GOMP_STACKSIZE};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{gomp_stacksize} );
 }
 
 sub unset_gomp_stacksize {
@@ -455,10 +502,11 @@ sub unset_gomp_stacksize {
     return delete $ENV{$ev};
 }
 
-sub gomp_spincount {
+sub gomp_spincount :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{GOMP_SPINCOUNT};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{gomp_spincount} );
 }
 
 sub unset_gomp_spincount {
@@ -467,10 +515,11 @@ sub unset_gomp_spincount {
     return delete $ENV{$ev};
 }
 
-sub gomp_rtems_thread_pools {
+sub gomp_rtems_thread_pools :lvalue {
     my ( $self, $value ) = @_;
     my $ev = q{GOMP_RTEMS_THREAD_POOLS};
-    return $self->_get_set_assert( $ev, $value );
+    $self->_get_set_assert( $ev, $value );
+    $self->_lvalue_for( $ev, q{gomp_rtems_thread_pools} );
 }
 
 sub unset_gomp_rtems_thread_pools {
@@ -526,6 +575,38 @@ sub _no_validate {
     };
 }
 
+package OpenMP::Environment::_Lvalue;
+
+use strict;
+use warnings;
+
+sub TIESCALAR {
+    my ( $class, $owner, $ev, $accessor, $has_override, $override ) = @_;
+    return bless {
+        owner        => $owner,
+        ev           => $ev,
+        accessor     => $accessor,
+        has_override => $has_override,
+        override     => $override,
+    }, $class;
+}
+
+sub FETCH {
+    my $self = shift;
+    return $self->{override} if $self->{has_override};
+    return $ENV{ $self->{ev} };
+}
+
+sub STORE {
+    my ( $self, $value ) = @_;
+    my $owner    = $self->{owner};
+    my $accessor = $self->{accessor};
+    $owner->$accessor($value);
+    return;
+}
+
+package OpenMP::Environment;
+
 1;
 
 __END__
@@ -565,9 +646,9 @@ which makes this the most direct use of C<OpenMP::Environment>:
   my $program = q{/path/to/my-openmp-program};
 
   for my $threads ( 1, 2, 4, 8, 16 ) {
-      $env->omp_num_threads($threads);
-      $env->omp_proc_bind(q{CLOSE});
-      $env->omp_places(q{cores});
+      $env->omp_num_threads = $threads;
+      $env->omp_proc_bind   = q{CLOSE};
+      $env->omp_places      = q{cores};
 
       # Optional guard before starting the child process.
       $env->assert_omp_environment;
@@ -603,7 +684,7 @@ when that library is loaded into the Perl process.
   my $env = OpenMP::Environment->new;
 
   for my $want_num_threads ( 1 .. 8 ) {
-      $env->omp_num_threads($want_num_threads);
+      $env->omp_num_threads = $want_num_threads;
       $env->assert_omp_environment;
 
       my $got_num_threads = _check_num_threads();
@@ -639,16 +720,16 @@ C<OMP_NUM_THREADS> may be a comma-separated list for nested parallel levels.
 Version 1.3.0 accepts this standard form in addition to the single integer
 form accepted by earlier releases:
 
-  $env->omp_num_threads(q{8,4,2});
+  $env->omp_num_threads = q{8,4,2};
 
 GCC libgomp also supports affinity-display controls introduced in OpenMP 5.0:
 
-  $env->omp_display_affinity(q{true});
-  $env->omp_affinity_format(q{thread %n affinity %A});
+  $env->omp_display_affinity = q{true};
+  $env->omp_affinity_format  = q{thread %n affinity %A};
 
 And the OpenMP default allocator may be selected through C<OMP_ALLOCATOR>:
 
-  $env->omp_allocator(q{omp_high_bw_mem_alloc});
+  $env->omp_allocator = q{omp_high_bw_mem_alloc};
 
 C<OMP_ALLOCATOR> and C<OMP_AFFINITY_FORMAT> are intentionally not validated
 by this module because their accepted grammars are substantially more complex
@@ -656,9 +737,10 @@ than the scalar checks performed here.
 
 =head1 DESCRIPTION
 
-C<OpenMP::Environment> provides getter/setter methods and explicit unsetters
-for the OpenMP and GNU libgomp environment variables documented by GCC
-16.2.0. The module changes C<%ENV>; it does not implement OpenMP itself.
+C<OpenMP::Environment> provides lvalue-capable getter/setter methods and
+explicit unsetters for the OpenMP and GNU libgomp environment variables
+documented by GCC 16.2.0. The module changes C<%ENV>; it does not implement
+OpenMP itself.
 
 GCC 16.2.0 reports C<_OPENMP=202111>, corresponding to OpenMP 5.2. Its
 libgomp documentation contains 25 canonical OpenMP/GOMP environment-variable
@@ -676,6 +758,8 @@ Version 1.3.0 adds support for:
 =item * C<OMP_DISPLAY_AFFINITY>
 
 =item * comma-separated positive-integer lists for C<OMP_NUM_THREADS>
+
+=item * validated lvalue assignment for all C<omp_*> and C<gomp_*> accessors
 
 =back
 
@@ -792,11 +876,38 @@ Prints supported canonical variables currently unset.
 
 =head2 Environment-variable accessors
 
-Each C<omp_*> or C<gomp_*> method is both a getter and setter. With no value it
-returns the current C<%ENV> value. With a value it validates when appropriate,
-sets C<%ENV>, and returns the resulting value. The corresponding C<unset_*>
-method deletes the variable and returns its previous value, following Perl's
-normal C<delete> semantics.
+Each C<omp_*> or C<gomp_*> method is an lvalue-capable getter/setter. New code
+may use normal Perl assignment syntax, which is the preferred form in this
+documentation:
+
+  $env->omp_num_threads = 8;
+  $env->omp_proc_bind   = q{spread};
+  $env->omp_places      = q{cores};
+
+Lvalue assignment uses the same validation and filtering as the traditional
+setter form. Compound operations therefore also pass their resulting value
+through the accessor:
+
+  $env->omp_num_threads++;
+  $env->gomp_spincount += 1000;
+  $env->omp_affinity_format .= q{ %n};
+
+Invalid lvalue assignments die without replacing the previous valid value.
+
+=head3 Traditional getter/setter usage
+
+The pre-1.3.0 call-style API remains fully supported for backward
+compatibility. Existing code does not need to change:
+
+  $env->omp_num_threads(8);          # traditional setter
+  my $threads = $env->omp_num_threads();  # traditional getter
+  $env->unset_omp_num_threads();     # explicit unsetter
+
+The corresponding C<unset_*> method deletes the variable and returns its
+previous value, following Perl's normal C<delete> semantics.
+
+For C<OMP_DYNAMIC> and C<OMP_NESTED>, the historical behavior is retained in
+both forms: assigning or passing a false value unsets the environment variable.
 
 =over 4
 
@@ -1110,5 +1221,5 @@ Inline::C, shared-library load-time, and OpenMP-runtime behavior discussions.
 
 Same as Perl.
 
-=for Pod::Coverage _assert_valid _get_set_assert _is_ge_if_set _is_positive_integer_list_if_set _no_validate _omp_summary _omp_summary_set _omp_summary_unset
+=for Pod::Coverage _assert_valid _get_set_assert _lvalue_for _is_ge_if_set _is_positive_integer_list_if_set _no_validate _omp_summary _omp_summary_set _omp_summary_unset TIESCALAR FETCH STORE
 
