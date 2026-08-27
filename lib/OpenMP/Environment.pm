@@ -896,7 +896,7 @@ Invalid lvalue assignments die without replacing the previous valid value.
 
 =head3 Traditional getter/setter usage
 
-The pre-1.3.0 call-style API remains fully supported for backward
+The pre-1.4.0 call-style API remains fully supported for backward
 compatibility. Existing code does not need to change:
 
   $env->omp_num_threads(8);          # traditional setter
