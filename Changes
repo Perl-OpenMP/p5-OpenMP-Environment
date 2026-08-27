@@ -93,4 +93,5 @@ Revision history for Perl extension OpenMP::Environment.
          - preserved all traditional getter/setter, lvalue, unsetter, and historical assignment behavior for backward compatibility
          - updated POD with DSL, external executable, OpenMP::Simple, validation, implementation-defined, and GNU-specific guidance
          - added tests for constants, dispatch, strict assertions, validation grammar, cross-variable rules, compatibility, and new-module POD
+	 - improved test coverage
 
